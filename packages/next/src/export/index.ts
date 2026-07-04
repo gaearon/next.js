@@ -1,3 +1,4 @@
+import { CLIENT_ONLY_ROUTES_MANIFEST } from '../build/client-only-routes'
 import type {
   ExportAppResult,
   ExportAppOptions,
@@ -187,6 +188,20 @@ function buildRDCCacheByPage(
   }
 
   return renderResumeDataCachesByPage
+}
+
+async function loadClientOnlyRoutesManifest(
+  distDir: string
+): Promise<
+  Array<{ page: string; paramKeys: string[]; ref: string }> | undefined
+> {
+  try {
+    return JSON.parse(
+      await fs.readFile(join(distDir, CLIENT_ONLY_ROUTES_MANIFEST), 'utf8')
+    )
+  } catch {
+    return undefined
+  }
 }
 
 async function exportAppImpl(
@@ -495,6 +510,9 @@ async function exportAppImpl(
     crossOrigin: nextConfig.crossOrigin,
     optimizeCss: nextConfig.experimental.optimizeCss,
     nextConfigOutput: nextConfig.output,
+    clientOnlyRoutes: nextConfig.experimental.clientOnlySegments
+      ? await loadClientOnlyRoutesManifest(distDir)
+      : undefined,
     nextScriptWorkers: nextConfig.experimental.nextScriptWorkers,
     largePageDataBytes: nextConfig.experimental.largePageDataBytes,
     serverActions: nextConfig.experimental.serverActions,

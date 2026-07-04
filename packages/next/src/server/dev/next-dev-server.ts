@@ -1,3 +1,5 @@
+import { isClientOnlyRoute } from '../../build/client-only-routes'
+import { normalizeAppPath } from '../../shared/lib/router/utils/app-paths'
 import type { FindComponentsResult, NodeRequestHandler } from '../next-server'
 import type { LoadComponentsReturnType } from '../load-components'
 import type { Options as ServerOptions } from '../next-server'
@@ -848,18 +850,33 @@ export default class DevServer extends Server {
 
         if (isAppPath) {
           if (this.nextConfig.output === 'export') {
-            if (!prerenderedRoutes) {
-              throw new Error(
-                `Page "${page}" is missing exported function "generateStaticParams()", which is required with "output: export" config.`
-              )
-            }
+            // A client-only route renders any param from the module graph
+            // during navigation, so it isn't required to enumerate params.
+            // Matches the build-time exemption.
+            const isExemptClientOnlyRoute =
+              this.nextConfig.experimental.clientOnlySegments &&
+              this.dir &&
+              (await isClientOnlyRoute(
+                (
+                  require('../../lib/find-pages-dir') as typeof import('../../lib/find-pages-dir')
+                ).findPagesDir(this.dir).appDir!,
+                normalizeAppPath(page)
+              ))
 
-            if (
-              !prerenderedRoutes.some((item) => item.pathname === urlPathname)
-            ) {
-              throw new Error(
-                `Page "${page}" is missing param "${pathname}" in "generateStaticParams()", which is required with "output: export" config.`
-              )
+            if (!isExemptClientOnlyRoute) {
+              if (!prerenderedRoutes) {
+                throw new Error(
+                  `Page "${page}" is missing exported function "generateStaticParams()", which is required with "output: export" config.`
+                )
+              }
+
+              if (
+                !prerenderedRoutes.some((item) => item.pathname === urlPathname)
+              ) {
+                throw new Error(
+                  `Page "${page}" is missing param "${pathname}" in "generateStaticParams()", which is required with "output: export" config.`
+                )
+              }
             }
           }
 

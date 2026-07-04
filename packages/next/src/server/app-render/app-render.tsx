@@ -3322,6 +3322,17 @@ async function renderToStream(
       (await getInstantTestBootstrapScriptContent())
   }
 
+  if (
+    ctx.renderOpts.clientOnlyRoutes &&
+    ctx.renderOpts.clientOnlyRoutes.length > 0
+  ) {
+    bootstrapScriptContent =
+      (bootstrapScriptContent ? `${bootstrapScriptContent};` : '') +
+      `self.__NEXT_CLIENT_ROUTES__=${JSON.stringify(
+        ctx.renderOpts.clientOnlyRoutes
+      ).replace(/</g, '\\u003c')}`
+  }
+
   // Create the "render route (app)" span manually so we can keep it open during streaming.
   // This is necessary because errors inside Suspense boundaries are reported asynchronously
   // during stream consumption, after a typical wrapped function would have ended the span.
@@ -7764,6 +7775,13 @@ async function prerenderToStream(
   let bootstrapScriptContent = renderOpts.experimental.exposeTestingApi
     ? await getInstantTestBootstrapScriptContent()
     : undefined
+
+  if (renderOpts.clientOnlyRoutes && renderOpts.clientOnlyRoutes.length > 0) {
+    bootstrapScriptContent =
+      `self.__NEXT_CLIENT_ROUTES__=${JSON.stringify(
+        renderOpts.clientOnlyRoutes
+      ).replace(/</g, '\\u003c')};` + (bootstrapScriptContent ?? '')
+  }
 
   // In development the static shell is served without a dynamic resume, so it
   // must carry the debug-channel request id (self.__next_r) itself for

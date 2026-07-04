@@ -169,6 +169,33 @@ export async function fetchServerResponse(
     headers[NEXT_URL] = nextUrl
   }
 
+  // A navigation to a client-only route is satisfied from the module graph;
+  // nothing needs to be requested. Refreshes keep fetching: they exist to pick
+  // up new data, and a same-URL request is how they do it.
+  if (process.env.__NEXT_CLIENT_ONLY_SEGMENTS) {
+    if (!options.isHmrRefresh && url.pathname !== location.pathname) {
+      const { navigateClientOnly } =
+        require('./client-only-navigation') as typeof import('./client-only-navigation')
+      const local = await navigateClientOnly(url)
+      if (local !== null) {
+        return {
+          flightData: local.flightData,
+          canonicalUrl: urlToUrlWithoutFlightMarker(local.canonicalUrl),
+          renderedSearch: local.renderedSearch as NormalizedSearch,
+          couldBeIntercepted: false,
+          supportsPerSegmentPrefetching: true,
+          postponed: false,
+          dynamicStaleTime: UnknownDynamicStaleTime,
+          staticStageData: null,
+          runtimePrefetchStream: null,
+          responseHeaders: new Headers(),
+          debugInfo: null,
+          revealAfter: null,
+        }
+      }
+    }
+  }
+
   // In static export mode, we need to modify the URL to request the .txt file,
   // but we should preserve the original URL for the canonical URL and error handling.
   const originalUrl = url

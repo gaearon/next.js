@@ -1998,6 +1998,61 @@ export default async function build(
       )
 
       // #endregion
+      // #region Client-only routes
+
+      // Routes whose every segment below the root layout is a Client
+      // Component don't need route data for navigations — the browser renders
+      // them from the module graph. Classify them and record a flight ref for
+      // each page module; the document inlines the result so the router can
+      // match against it.
+      let clientOnlyRoutes: import('./client-only-routes').ClientOnlyRoute[] =
+        []
+      const clientOnlyRoutePages = new Set<string>()
+      if (
+        config.experimental.clientOnlySegments &&
+        appDir &&
+        NextBuildContext.mappedAppPages
+      ) {
+        const {
+          collectClientOnlyRoutes,
+          resolveClientOnlyRouteRefs,
+          CLIENT_ONLY_ROUTES_MANIFEST,
+        } =
+          require('./client-only-routes') as typeof import('./client-only-routes')
+
+        const appPages = new Map<string, { page: string; pageFile: string }>()
+        for (const [pageKey, filePath] of Object.entries(
+          NextBuildContext.mappedAppPages
+        )) {
+          if (!pageKey.endsWith('/page')) {
+            continue
+          }
+          appPages.set(pageKey, {
+            page: normalizeAppPath(pageKey),
+            pageFile: filePath.replace(/^private-next-app-dir/, appDir),
+          })
+        }
+        clientOnlyRoutes = await collectClientOnlyRoutes(appDir, appPages)
+        resolveClientOnlyRouteRefs(clientOnlyRoutes, appDir, distDir)
+        clientOnlyRoutes = clientOnlyRoutes.filter(
+          (route) => route.ref !== null
+        )
+        for (const route of clientOnlyRoutes) {
+          clientOnlyRoutePages.add(route.page)
+        }
+        await fs.writeFile(
+          path.join(distDir, CLIENT_ONLY_ROUTES_MANIFEST),
+          JSON.stringify(
+            clientOnlyRoutes.map(({ page, paramKeys, ref }) => ({
+              page,
+              paramKeys,
+              ref,
+            }))
+          )
+        )
+      }
+
+      // #endregion
       // #region Collect data
 
       const totalPageCount = pageKeys.pages.length + (pageKeys.app?.length || 0)
@@ -2427,7 +2482,12 @@ export default async function build(
                             if (
                               config.output === 'export' &&
                               isDynamic &&
-                              !hasGenerateStaticParams
+                              !hasGenerateStaticParams &&
+                              // A client-only route renders any param from the
+                              // module graph during navigation; there are no
+                              // per-param files to generate. Direct loads of
+                              // its URLs 404 on a static host.
+                              !clientOnlyRoutePages.has(page)
                             ) {
                               throw new Error(
                                 `Page "${page}" is missing "generateStaticParams()" so it cannot be used with "output: export" config.`

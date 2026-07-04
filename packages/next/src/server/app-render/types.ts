@@ -128,6 +128,12 @@ export interface RenderOptsPartial {
   ) => void
   isBuildTimePrerendering?: boolean
   nextConfigOutput?: 'standalone' | 'export'
+  /**
+   * Routes whose every segment below the root layout is a Client Component,
+   * with a flight ref for each page module. Inlined into the document so
+   * navigations to them are satisfied from the module graph.
+   */
+  clientOnlyRoutes?: Array<{ page: string; paramKeys: string[]; ref: string }>
   onInstrumentationRequestError?: ServerOnInstrumentationRequestError
   isDraftMode?: boolean
   onUpdateCookies?: (cookies: string[]) => void

@@ -520,6 +520,12 @@ export interface ExperimentalConfig {
    * runtime-prefetchable routes.
    */
   appShells?: boolean
+
+  /**
+   * When a navigation target consists entirely of Client Components, render
+   * it from the client-route manifest without requesting route data.
+   */
+  clientOnlySegments?: boolean
   varyParams?: boolean
   prefetchInlining?:
     | boolean

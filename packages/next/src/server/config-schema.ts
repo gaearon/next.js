@@ -230,6 +230,7 @@ export const experimentalSchema = {
   optimisticRouting: z.boolean().optional(),
   instrumentationClientRouterTransitionEvents: z.boolean().optional(),
   appShells: z.boolean().optional(),
+  clientOnlySegments: z.boolean().optional(),
   varyParams: z.boolean().optional(),
   prefetchInlining: z
     .union([
