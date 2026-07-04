@@ -48,6 +48,20 @@ export type RootTreePrefetch = {
   buildId?: string
   tree: TreePrefetch
   staleTime: number
+  /**
+   * Dynamic child route patterns reachable under this route that were
+   * exported at a pattern address (see appendPatternRoute). The client uses
+   * these to compose the target route for params that were never
+   * individually generated.
+   */
+  patternChildren?: PatternChildDeclaration[]
+}
+
+export type PatternChildDeclaration = {
+  /** The parent pathname the pattern hangs off, e.g. `/spa`. */
+  prefix: string
+  /** The dynamic param name, e.g. `id`. */
+  param: string
 }
 
 export type TreePrefetchParam = {
@@ -201,7 +215,8 @@ export async function collectSegmentData(
   serverConsumerManifest: any,
   prefetchInlining: boolean,
   hints: PrefetchHints | null,
-  isUpgradeableISRFallback: boolean
+  isUpgradeableISRFallback: boolean,
+  patternChildren?: PatternChildDeclaration[]
 ): Promise<Map<SegmentRequestKey, Buffer>> {
   // Traverse the router tree and generate a prefetch response for each segment.
 
@@ -252,6 +267,7 @@ export async function collectSegmentData(
       prefetchInlining={prefetchInlining}
       hints={hints}
       isUpgradeableISRFallback={isUpgradeableISRFallback}
+      patternChildren={patternChildren}
     />,
     clientModules,
     {
@@ -694,6 +710,7 @@ async function PrefetchTreeData({
   prefetchInlining,
   hints,
   isUpgradeableISRFallback,
+  patternChildren,
 }: {
   isClientParamParsingEnabled: boolean
   fullPageDataBuffer: Buffer
@@ -705,6 +722,7 @@ async function PrefetchTreeData({
   prefetchInlining: boolean
   hints: PrefetchHints | null
   isUpgradeableISRFallback: boolean
+  patternChildren?: PatternChildDeclaration[]
 }): Promise<RootTreePrefetch | null> {
   // We're currently rendering a Flight response for the route tree prefetch.
   // Inside this component, decode the Flight stream for the whole page. This is
@@ -796,6 +814,9 @@ async function PrefetchTreeData({
   const treePrefetch: RootTreePrefetch = {
     tree,
     staleTime,
+  }
+  if (patternChildren && patternChildren.length > 0) {
+    treePrefetch.patternChildren = patternChildren
   }
   if (buildId) {
     treePrefetch.buildId = buildId

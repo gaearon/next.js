@@ -124,6 +124,10 @@ async function exportPageImpl(
     // concrete version (it has a `generateStaticParams` candidate param).
     _isFallbackUpgradeable: isFallbackUpgradeable = false,
 
+    // Dynamic child route patterns exported at a pattern address, declared
+    // in this route's tree payload.
+    _patternChildren: patternChildren,
+
     // Pull the original query out.
     query: originalQuery = {},
   } = exportPath
@@ -267,6 +271,7 @@ async function exportPageImpl(
   const renderOpts: WorkerRenderOpts = {
     ...components,
     ...commonRenderOpts,
+    patternChildren,
     params,
     optimizeCss,
     disableOptimizedLoading,

@@ -1,3 +1,4 @@
+import { isClientReference } from '../client-and-server-references'
 import type {
   Metadata,
   ResolvedMetadata,
@@ -497,6 +498,10 @@ function getDefinedViewport(
   props: SegmentProps,
   tracingProps: { route: string }
 ): Viewport | ViewportResolver | null {
+  if (isClientReference(mod)) {
+    // See getDefinedMetadata.
+    return null
+  }
   if (typeof mod.generateViewport === 'function') {
     const { route } = tracingProps
     const segmentProps = createSegmentProps(mod.generateViewport, props)
@@ -524,6 +529,12 @@ function getDefinedMetadata(
   props: SegmentProps,
   tracingProps: { route: string }
 ): Metadata | MetadataResolver | null {
+  if (isClientReference(mod)) {
+    // Client Components can't export metadata. Their server-graph module
+    // proxies answer any property access with a callable reference, so
+    // probing them below would fabricate a phantom `generateMetadata`.
+    return null
+  }
   if (typeof mod.generateMetadata === 'function') {
     const { route } = tracingProps
     const segmentProps = createSegmentProps(mod.generateMetadata, props)

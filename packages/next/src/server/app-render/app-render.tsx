@@ -9921,7 +9921,8 @@ async function collectSegmentData(
     serverConsumerManifest,
     Boolean(renderOpts.experimental.prefetchInlining),
     hints,
-    isUpgradeableISRFallback
+    isUpgradeableISRFallback,
+    renderOpts.patternChildren
   )
 }
 

@@ -673,6 +673,7 @@ export function matchKnownRoute(
   // and bail out to server resolution instead of making the same mistake.
   const syntheticEntry: FulfilledRouteCacheEntry = {
     canonicalUrl: pathname + search,
+    patternDataPathname: null,
     status: EntryStatus.Fulfilled,
     blockedTasks: null,
     tree: reifiedTree,

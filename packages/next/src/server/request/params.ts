@@ -34,6 +34,8 @@ import {
 import {
   makeDevtoolsIOAwarePromise,
   makeHangingPromise,
+  makeClientHookHangingPromise,
+  ClientHookDynamicError,
   makePromiseFromTrigger,
   RENDER_STAGES_BY_DATA_KIND,
 } from '../dynamic-rendering-utils'
@@ -61,18 +63,36 @@ export function createParamsFromClient(
     switch (workUnitStore.type) {
       case 'prerender':
       case 'prerender-client':
+        if (workStore.isStaticExport) {
+          const fallbackParams = workUnitStore.fallbackRouteParams
+          if (fallbackParams) {
+            for (const key in underlyingParams) {
+              if (fallbackParams.has(key)) {
+                // With `output: 'export'`, a client segment's params parse in
+                // the browser from the URL — the hole this leaves in the
+                // shell fills on the client, like a client hook, and the
+                // classification must match so the export allows it under
+                // Suspense.
+                return makeClientHookHangingPromise(
+                  workUnitStore.renderSignal,
+                  new ClientHookDynamicError(workStore.route, '`params`')
+                )
+              }
+            }
+          }
+        }
+      // fallthrough
       case 'prerender-ppr':
       case 'prerender-legacy':
         // Client params don't need additional vary tracking because by the
         // time they reach the client, the access would have already been
         // tracked by the server.
-        const varyParamsAccumulator = null
         return createStaticPrerenderParams(
           underlyingParams,
           null,
           workStore,
           workUnitStore,
-          varyParamsAccumulator
+          null // varyParamsAccumulator
         )
       case 'cache':
       case 'private-cache':
@@ -292,6 +312,17 @@ export function createPrerenderParamsForClientSegment(
               // to consider the awaiting of this params object "dynamic". Since
               // we are in cacheComponents mode we encode this as a promise that never
               // resolves.
+              if (workStore.isStaticExport) {
+                // With `output: 'export'`, a client segment's params parse in
+                // the browser from the URL — the hole this leaves in the
+                // shell fills on the client, like a client hook, and the
+                // classification must match so the export allows it under
+                // Suspense.
+                return makeClientHookHangingPromise(
+                  workUnitStore.renderSignal,
+                  new ClientHookDynamicError(workStore.route, '`params`')
+                )
+              }
               return makeHangingPromise(
                 workUnitStore.renderSignal,
                 workStore.route,

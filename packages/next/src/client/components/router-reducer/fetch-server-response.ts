@@ -194,12 +194,38 @@ export async function fetchServerResponse(
     const isLegacyPPR =
       process.env.__NEXT_PPR && !process.env.__NEXT_CACHE_COMPONENTS
     const shouldImmediatelyDecode = !isLegacyPPR
-    const res = await createFetch<NavigationFlightResponse>(
+    let res = await createFetch<NavigationFlightResponse>(
       url,
       headers,
       'auto',
       shouldImmediatelyDecode
     )
+
+    if (process.env.__NEXT_CLIENT_ONLY_SEGMENTS) {
+      if (
+        process.env.NODE_ENV === 'production' &&
+        process.env.__NEXT_CONFIG_OUTPUT === 'export' &&
+        !res.ok
+      ) {
+        // The URL has no files of its own. Its params may be served by a
+        // pattern-addressed export declared by the parent route; the payload
+        // there is complete for any param value (params derive client-side).
+        const { resolvePatternPathname } =
+          require('../segment-cache/cache') as typeof import('../segment-cache/cache')
+        const patternPathname = await resolvePatternPathname(
+          originalUrl.pathname,
+          headers
+        )
+        if (patternPathname !== null) {
+          res = await createFetch<NavigationFlightResponse>(
+            new URL(patternPathname + '.txt', location.origin),
+            headers,
+            'auto',
+            shouldImmediatelyDecode
+          )
+        }
+      }
+    }
 
     // If the fetch succeeds while we're in the offline state, notify the
     // offline module so it can short-circuit the polling loop.

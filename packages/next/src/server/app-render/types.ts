@@ -128,6 +128,12 @@ export interface RenderOptsPartial {
   ) => void
   isBuildTimePrerendering?: boolean
   nextConfigOutput?: 'standalone' | 'export'
+  /**
+   * Dynamic child route patterns under this route that the export wrote at a
+   * pattern address; declared in the route's tree payload so the client can
+   * compose navigations to params that were never individually generated.
+   */
+  patternChildren?: Array<{ prefix: string; param: string }>
   onInstrumentationRequestError?: ServerOnInstrumentationRequestError
   isDraftMode?: boolean
   onUpdateCookies?: (cookies: string[]) => void

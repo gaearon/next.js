@@ -217,6 +217,13 @@ export type FulfilledRouteCacheEntry = RouteCacheEntryShared & {
   status: EntryStatus.Fulfilled
   blockedTasks: null
   canonicalUrl: string
+  /**
+   * With `output: 'export'`, when this entry was resolved from a
+   * pattern-addressed export (`/spa/$d$id`), the pathname its data files live
+   * under. The canonical URL keeps the requested pathname — this only
+   * redirects data requests.
+   */
+  patternDataPathname: string | null
   renderedSearch: NormalizedSearch
   tree: RouteTree
   metadata: RouteTree
@@ -785,6 +792,7 @@ export function deprecated_requestOptimisticRouteCacheEntry(
   // optimistic values.
   const optimisticEntry: FulfilledRouteCacheEntry = {
     canonicalUrl: optimisticCanonicalUrl,
+    patternDataPathname: null,
 
     status: EntryStatus.Fulfilled,
     // This isn't cloned because it's instance-specific
@@ -1284,6 +1292,7 @@ export function fulfillRouteCacheEntry(
     getRenderedSearchFromVaryPath(metadataVaryPath) ?? ('' as NormalizedSearch)
   const fulfilledEntry: FulfilledRouteCacheEntry = entry as any
   fulfilledEntry.status = EntryStatus.Fulfilled
+  fulfilledEntry.patternDataPathname ??= null
   fulfilledEntry.tree = tree
   fulfilledEntry.metadata = createMetadataRouteTree(metadataVaryPath)
   // Route structure is essentially static — it only changes on deploy.
@@ -1801,6 +1810,80 @@ export function convertRouteTreeToFlightRouterState(
   return flightRouterState
 }
 
+/**
+ * With `output: 'export'`, a URL whose params were never individually
+ * generated has no files of its own — but if the parent route declared a
+ * pattern child in its tree payload, the data was exported once at the
+ * pattern address and is valid for every param value. Fetches the parent's
+ * tree to find the declaration, then the pattern route's tree.
+ */
+export async function resolvePatternPathname(
+  pathname: string,
+  headers: RequestHeaders
+): Promise<string | null> {
+  const lastSlash = pathname.lastIndexOf('/')
+  if (lastSlash < 0 || pathname.length <= 1) {
+    return null
+  }
+  const parentPathname = lastSlash === 0 ? '/' : pathname.slice(0, lastSlash)
+
+  const parentTreeUrl = addSegmentPathToUrlInOutputExportMode(
+    new URL(parentPathname, location.origin),
+    '/_tree' as SegmentRequestKey
+  )
+  const parentResponse = await fetchPrefetchResponse(parentTreeUrl, headers)
+  if (!parentResponse || !parentResponse.ok || !parentResponse.body) {
+    return null
+  }
+  let parentData: RootTreePrefetch
+  try {
+    const { stream } = await createNonTaskyPrefetchResponseStream(
+      parentResponse.body
+    )
+    parentData = await createFromNextReadableStream<RootTreePrefetch>(
+      stream,
+      headers,
+      { allowPartialStream: true }
+    )
+  } catch {
+    return null
+  }
+  const declarations = parentData.patternChildren
+  if (!declarations) {
+    return null
+  }
+  const declaration = declarations.find(
+    (child) => child.prefix === parentPathname
+  )
+  if (declaration === undefined) {
+    return null
+  }
+
+  return (
+    (declaration.prefix === '/' ? '' : declaration.prefix) +
+    `/$d$${declaration.param}`
+  )
+}
+
+async function fetchPatternRouteFallback(
+  pathname: string,
+  headers: RequestHeaders
+): Promise<{ response: RSCResponse<unknown>; patternPathname: string } | null> {
+  const patternPathname = await resolvePatternPathname(pathname, headers)
+  if (patternPathname === null) {
+    return null
+  }
+  const patternTreeUrl = addSegmentPathToUrlInOutputExportMode(
+    new URL(patternPathname, location.origin),
+    '/_tree' as SegmentRequestKey
+  )
+  const response = await fetchPrefetchResponse(patternTreeUrl, headers)
+  if (!response || !response.ok || !response.body) {
+    return null
+  }
+  return { response, patternPathname }
+}
+
 export async function fetchRouteOnCacheMiss(
   entry: PendingRouteCacheEntry,
   key: RouteCacheKey
@@ -1825,8 +1908,9 @@ export async function fetchRouteOnCacheMiss(
 
   try {
     const url = new URL(pathname + search, location.origin)
-    let response
+    let response = null
     let urlAfterRedirects
+    let patternDataPathname: string | null = null
     if (isOutputExportMode) {
       // In output: "export" mode, we can't use headers to request a particular
       // segment. Instead, we encode the extra request information into the URL.
@@ -1872,18 +1956,33 @@ export async function fetchRouteOnCacheMiss(
         //
         // Note that we can't use headResponse.ok here, because
         // Response#ok returns `false` with 3xx responses.
-        rejectRouteCacheEntry(entry, Date.now() + 10 * 1000)
-        return null
+        if (process.env.__NEXT_CLIENT_ONLY_SEGMENTS) {
+          // The URL has no files of its own; its params may be served by a
+          // pattern-addressed export declared by the parent route.
+          const patternFallback = await fetchPatternRouteFallback(
+            pathname,
+            headers
+          )
+          if (patternFallback !== null) {
+            response = patternFallback.response
+            patternDataPathname = patternFallback.patternPathname
+            urlAfterRedirects = url
+          }
+        }
+        if (response === null) {
+          rejectRouteCacheEntry(entry, Date.now() + 10 * 1000)
+          return null
+        }
+      } else {
+        urlAfterRedirects = headResponse.redirected
+          ? new URL(headResponse.url)
+          : url
+
+        response = await fetchPrefetchResponse(
+          addSegmentPathToUrlInOutputExportMode(urlAfterRedirects, segmentPath),
+          headers
+        )
       }
-
-      urlAfterRedirects = headResponse.redirected
-        ? new URL(headResponse.url)
-        : url
-
-      response = await fetchPrefetchResponse(
-        addSegmentPathToUrlInOutputExportMode(urlAfterRedirects, segmentPath),
-        headers
-      )
     } else {
       // "Server" mode. We can use request headers instead of the pathname.
       // TODO: The eventual plan is to get rid of our custom request headers and
@@ -1914,7 +2013,7 @@ export async function fetchRouteOnCacheMiss(
     // Or, we should just use a (readonly) URL object instead. The type of the
     // prop that we pass to seed the initial state does not need to be the same
     // type as the state itself.
-    const canonicalUrl = createHrefFromUrl(urlAfterRedirects)
+    const canonicalUrl = createHrefFromUrl(urlAfterRedirects ?? url)
 
     // Check whether the response varies based on the Next-Url header.
     const varyHeader = response.headers.get('vary')
@@ -1964,8 +2063,10 @@ export async function fetchRouteOnCacheMiss(
 
       // Get the params that were used to render the target page. These may
       // be different from the params in the request URL, if the page
-      // was rewritten.
-      const renderedPathname = getRenderedPathname(response)
+      // was rewritten. For a pattern-addressed route the data is
+      // param-independent; the params parse from the requested pathname.
+      const renderedPathname =
+        patternDataPathname !== null ? pathname : getRenderedPathname(response)
       const renderedSearch = getRenderedSearch(response)
 
       // Convert the server-sent data into the RouteTree format used by the
@@ -1984,6 +2085,12 @@ export async function fetchRouteOnCacheMiss(
       if (metadataVaryPath === null) {
         rejectRouteCacheEntry(entry, Date.now() + 10 * 1000)
         return null
+      }
+
+      if (patternDataPathname !== null) {
+        // `fulfillRouteCacheEntry` preserves this when it fulfills the entry.
+        ;(entry as unknown as FulfilledRouteCacheEntry).patternDataPathname =
+          patternDataPathname
       }
 
       discoverKnownRoute(
@@ -2234,8 +2341,12 @@ async function fetchSegmentsOnCacheMissImpl(
   // Use the canonical URL to request the segment, not the original URL. These
   // are usually the same, but the canonical URL will be different if the route
   // tree response was redirected. To avoid an extra waterfall on every segment
-  // request, we pass the redirected URL instead of the original one.
-  const url = new URL(route.canonicalUrl, location.origin)
+  // request, we pass the redirected URL instead of the original one. A
+  // pattern-addressed route's data files live under the pattern pathname.
+  const url = new URL(
+    route.patternDataPathname ?? route.canonicalUrl,
+    location.origin
+  )
   const nextUrl = routeKey.nextUrl
 
   const requestKey = tree.requestKey
@@ -2506,7 +2617,11 @@ export async function fetchSegmentPrefetchesUsingDynamicRequest(
   spawnedEntries: Map<SegmentRequestKey, PendingSegmentCacheEntry>
 ): Promise<PrefetchSubtaskResult<null> | null> {
   const key = task.key
-  let url = new URL(route.canonicalUrl, location.origin)
+  let url = new URL(
+    (isCacheComponentsExportMode ? route.patternDataPathname : null) ??
+      route.canonicalUrl,
+    location.origin
+  )
   const nextUrl = key.nextUrl
 
   if (isCacheComponentsExportMode) {

@@ -59,6 +59,10 @@ describe('client-only-segments', () => {
     files: __dirname,
     skipStart,
     skipDeployment: true,
+    // A plain static file server can't echo the deployment id header back on
+    // data requests, so skew protection would turn every navigation into an
+    // MPA navigation. Same as segment-cache/export.
+    disableAutoSkewProtection: true,
   })
 
   if (isNextStart) {
@@ -119,10 +123,12 @@ describe('client-only-segments', () => {
       expect(dataRequests(requests, '/spa/9')).toEqual([])
     })
 
-    it('falls back to fetching for a server segment', async () => {
-      const browser = await webdriver(url, '/')
-      await browser.waitForIdleNetwork()
+    it('serves a server segment from its own route data', async () => {
+      // Unlike the client-only route, a server segment has content the browser
+      // can't produce, so its data is fetched from files addressed at the
+      // route itself (whether during prefetching or at navigation time).
       requests.length = 0
+      const browser = await webdriver(url, '/')
 
       await browser.elementByCss('#to-server').click()
       await retry(async () => {

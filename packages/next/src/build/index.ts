@@ -2971,6 +2971,32 @@ export default async function build(
                 }
               }
 
+              // Dynamic routes exported at a pattern address, grouped by the
+              // parent route that declares them in its tree payload.
+              const patternChildrenByParent = new Map<
+                string,
+                Array<{ prefix: string; param: string }>
+              >()
+              if (config.experimental.clientOnlySegments) {
+                sortedStaticPaths.forEach(([, routes]) => {
+                  for (const route of routes) {
+                    const match = /^(.*)\/\$d\$([^/]+)$/.exec(route.pathname)
+                    if (
+                      !match ||
+                      !route.fallbackRouteParams ||
+                      route.fallbackRouteParams.length === 0
+                    ) {
+                      continue
+                    }
+                    const prefix = match[1] === '' ? '/' : match[1]
+                    const declarations =
+                      patternChildrenByParent.get(prefix) ?? []
+                    declarations.push({ prefix, param: match[2] })
+                    patternChildrenByParent.set(prefix, declarations)
+                  }
+                })
+              }
+
               // TODO: output manifest specific to app paths and their
               // revalidate periods and dynamicParams settings
               sortedStaticPaths.forEach(([originalAppPath, routes]) => {
@@ -3016,10 +3042,14 @@ export default async function build(
                     return
                   }
 
+                  const patternChildren = patternChildrenByParent.get(
+                    route.pathname
+                  )
                   defaultMap[route.pathname] = {
                     page: originalAppPath,
                     _ssgPath: route.encodedPathname,
                     _fallbackRouteParams: route.fallbackRouteParams,
+                    _patternChildren: patternChildren,
                     _isDynamicError: isDynamicError,
                     _isAppDir: true,
                     _isRoutePPREnabled: isRoutePPREnabled,

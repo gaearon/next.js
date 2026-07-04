@@ -1390,6 +1390,14 @@ export type ExportPathMap = {
     _pagesFallback?: boolean
 
     /**
+     * Dynamic child route patterns under this route that the export wrote at
+     * a pattern address; declared in the route's tree payload.
+     *
+     * @internal
+     */
+    _patternChildren?: Array<{ prefix: string; param: string }>
+
+    /**
      * The locale that this page should be rendered in.
      *
      * @internal
