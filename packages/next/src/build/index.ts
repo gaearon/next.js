@@ -1,3 +1,4 @@
+import { appendPatternRoute } from './client-only-routes'
 import type { PagesManifest } from './webpack/plugins/pages-manifest-plugin'
 import type {
   ExportPathMap,
@@ -1998,60 +1999,6 @@ export default async function build(
       )
 
       // #endregion
-      // #region Client-only routes
-
-      // Routes whose every segment below the root layout is a Client
-      // Component don't need route data for navigations — the browser renders
-      // them from the module graph. Classify them and record a flight ref for
-      // each page module; the document inlines the result so the router can
-      // match against it.
-      let clientOnlyRoutes: import('./client-only-routes').ClientOnlyRoute[] =
-        []
-      const clientOnlyRoutePages = new Set<string>()
-      if (
-        config.experimental.clientOnlySegments &&
-        appDir &&
-        NextBuildContext.mappedAppPages
-      ) {
-        const {
-          collectClientOnlyRoutes,
-          resolveClientOnlyRouteRefs,
-          CLIENT_ONLY_ROUTES_MANIFEST,
-        } =
-          require('./client-only-routes') as typeof import('./client-only-routes')
-
-        const appPages = new Map<string, { page: string; pageFile: string }>()
-        for (const [pageKey, filePath] of Object.entries(
-          NextBuildContext.mappedAppPages
-        )) {
-          if (!pageKey.endsWith('/page')) {
-            continue
-          }
-          appPages.set(pageKey, {
-            page: normalizeAppPath(pageKey),
-            pageFile: filePath.replace(/^private-next-app-dir/, appDir),
-          })
-        }
-        clientOnlyRoutes = await collectClientOnlyRoutes(appDir, appPages)
-        resolveClientOnlyRouteRefs(clientOnlyRoutes, appDir, distDir)
-        clientOnlyRoutes = clientOnlyRoutes.filter(
-          (route) => route.ref !== null
-        )
-        for (const route of clientOnlyRoutes) {
-          clientOnlyRoutePages.add(route.page)
-        }
-        await fs.writeFile(
-          path.join(distDir, CLIENT_ONLY_ROUTES_MANIFEST),
-          JSON.stringify(
-            clientOnlyRoutes.map(({ page, paramKeys, ref }) => ({
-              page,
-              paramKeys,
-              ref,
-            }))
-          )
-        )
-      }
-
       // #endregion
       // #region Collect data
 
@@ -2444,7 +2391,12 @@ export default async function build(
                           if (workerResult.prerenderedRoutes) {
                             staticPaths.set(
                               originalAppPath,
-                              workerResult.prerenderedRoutes
+                              config.output === 'export' &&
+                                config.experimental.clientOnlySegments
+                                ? appendPatternRoute(
+                                    workerResult.prerenderedRoutes
+                                  )
+                                : workerResult.prerenderedRoutes
                             )
                             // Under Cache Components, `prerenderedRoutes` also contains the
                             // base fallback entry. An export skips it (no server to complete
@@ -2483,11 +2435,13 @@ export default async function build(
                               config.output === 'export' &&
                               isDynamic &&
                               !hasGenerateStaticParams &&
-                              // A client-only route renders any param from the
-                              // module graph during navigation; there are no
-                              // per-param files to generate. Direct loads of
-                              // its URLs 404 on a static host.
-                              !clientOnlyRoutePages.has(page)
+                              // With `clientOnlySegments`, such a route exports
+                              // its fallback render at a pattern address
+                              // instead — and if that render isn't fully
+                              // static, it fails with the access located,
+                              // which names `generateStaticParams` as the fix
+                              // for params.
+                              !config.experimental.clientOnlySegments
                             ) {
                               throw new Error(
                                 `Page "${page}" is missing "generateStaticParams()" so it cannot be used with "output: export" config.`
@@ -3046,14 +3000,18 @@ export default async function build(
                   }
 
                   // With `output: 'export'` we only emit concrete, fully resolved
-                  // routes. Skip fallback shells for unresolved params — there is no
-                  // server to complete them, so requests for non-generated params 404
-                  // on the static host, matching non-Cache-Components export.
+                  // routes plus, with `clientOnlySegments`, pattern-addressed
+                  // fallback entries (recognizable by their placeholder
+                  // pathname). Skip the fallback shell entry itself — there is
+                  // no server to complete it, so requests for non-generated
+                  // params 404 on the static host, matching
+                  // non-Cache-Components export.
                   if (
                     config.output === 'export' &&
                     config.cacheComponents &&
                     route.fallbackRouteParams &&
-                    route.fallbackRouteParams.length > 0
+                    route.fallbackRouteParams.length > 0 &&
+                    route.pathname.includes('[')
                   ) {
                     return
                   }
@@ -3336,7 +3294,11 @@ export default async function build(
               if (
                 isRoutePPREnabled &&
                 prerenderedRoute.fallbackRouteParams &&
-                prerenderedRoute.fallbackRouteParams.length > 0
+                prerenderedRoute.fallbackRouteParams.length > 0 &&
+                // A pattern-addressed fallback entry (`/spa/$d$id`) is a
+                // complete exported artifact shared by every param value; it
+                // belongs with the static routes so the export copies it out.
+                prerenderedRoute.pathname.includes('[')
               ) {
                 // If the route has unknown params, then we need to add it to
                 // the list of dynamic routes.

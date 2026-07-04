@@ -1,5 +1,3 @@
-import { isClientOnlyRoute } from '../../build/client-only-routes'
-import { normalizeAppPath } from '../../shared/lib/router/utils/app-paths'
 import type { FindComponentsResult, NodeRequestHandler } from '../next-server'
 import type { LoadComponentsReturnType } from '../load-components'
 import type { Options as ServerOptions } from '../next-server'
@@ -850,20 +848,12 @@ export default class DevServer extends Server {
 
         if (isAppPath) {
           if (this.nextConfig.output === 'export') {
-            // A client-only route renders any param from the module graph
-            // during navigation, so it isn't required to enumerate params.
-            // Matches the build-time exemption.
-            const isExemptClientOnlyRoute =
-              this.nextConfig.experimental.clientOnlySegments &&
-              this.dir &&
-              (await isClientOnlyRoute(
-                (
-                  require('../../lib/find-pages-dir') as typeof import('../../lib/find-pages-dir')
-                ).findPagesDir(this.dir).appDir!,
-                normalizeAppPath(page)
-              ))
-
-            if (!isExemptClientOnlyRoute) {
+            // With `clientOnlySegments`, params don't have to be
+            // enumerated: the build exports the fallback render at a pattern
+            // address when it's fully static, and fails with the access
+            // located when it isn't. Dev enforcement of non-static fallbacks
+            // happens through the same shell validation as everything else.
+            if (!this.nextConfig.experimental.clientOnlySegments) {
               if (!prerenderedRoutes) {
                 throw new Error(
                   `Page "${page}" is missing exported function "generateStaticParams()", which is required with "output: export" config.`

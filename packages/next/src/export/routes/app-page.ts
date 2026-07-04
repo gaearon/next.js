@@ -146,7 +146,11 @@ export async function exportAppPage(
         fallbackRouteParams != null && fallbackRouteParams.size > 0
       const shouldWriteRsc =
         !renderOpts.experimental.isRoutePPREnabled ||
-        (!postponed && !hasFallbackParams)
+        (!postponed &&
+          // With `output: 'export'` the render was verified complete — a
+          // fallback render that reached this point never read its params —
+          // so the payload is static even when fallback params exist.
+          (!hasFallbackParams || renderOpts.nextConfigOutput === 'export'))
       hasStaticRsc = shouldWriteRsc
 
       // With PPR enabled, we normally skip writing .rsc because it may contain
