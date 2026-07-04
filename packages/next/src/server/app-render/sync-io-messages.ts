@@ -34,10 +34,11 @@ function createSyncIOErrorImpl(
   route: string,
   expression: string,
   type: SyncIOApiType,
-  docsUrl: string
+  docsUrl: string,
+  calledFrom: string | undefined
 ): Error {
   return new Error(
-    `Route "${route}": Next.js encountered the unstable value ${expression} while prerendering.\n\n` +
+    `Route "${route}": Next.js encountered the unstable value ${expression}${calledFrom === undefined ? '' : ` from \`${calledFrom}\``} while prerendering.\n\n` +
       `This value can change between renders, so it must be either prerendered or computed later.\n\n` +
       `Ways to fix this:\n` +
       `  - [dynamic] Render at request time by adding a dynamic data access (e.g. \`await connection()\`) before this call\n    ${docsUrl}#generate-on-every-request\n` +
@@ -50,32 +51,42 @@ function createSyncIOErrorImpl(
 export function createSyncIOError(
   route: string,
   expression: string,
-  type: SyncIOApiType
-): Error {
-  return createSyncIOErrorImpl(route, expression, type, SYNC_IO_DOCS[type])
-}
-
-export function createSyncIORuntimeError(
-  route: string,
-  expression: string,
-  type: SyncIOApiType
+  type: SyncIOApiType,
+  calledFrom?: string
 ): Error {
   return createSyncIOErrorImpl(
     route,
     expression,
     type,
-    SYNC_IO_RUNTIME_DOCS[type]
+    SYNC_IO_DOCS[type],
+    calledFrom
+  )
+}
+
+export function createSyncIORuntimeError(
+  route: string,
+  expression: string,
+  type: SyncIOApiType,
+  calledFrom?: string
+): Error {
+  return createSyncIOErrorImpl(
+    route,
+    expression,
+    type,
+    SYNC_IO_RUNTIME_DOCS[type],
+    calledFrom
   )
 }
 
 export function createSyncIOClientError(
   route: string,
   expression: string,
-  type: SyncIOApiType
+  type: SyncIOApiType,
+  calledFrom?: string
 ): Error {
   const docsUrl = SYNC_IO_CLIENT_DOCS[type]
   return new Error(
-    `Route "${route}": Next.js encountered the unstable value ${expression} in a Client Component.\n\n` +
+    `Route "${route}": Next.js encountered the unstable value ${expression}${calledFrom === undefined ? '' : ` from \`${calledFrom}\``} in a Client Component.\n\n` +
       `This value would be evaluated during the prerender, instead of recomputed on each visit.\n\n` +
       `Ways to fix this:\n` +
       `  - [stream] Wrap the Client Component in \`<Suspense fallback={...}>\`\n    ${docsUrl}#wrap-in-or-move-into-suspense\n` +

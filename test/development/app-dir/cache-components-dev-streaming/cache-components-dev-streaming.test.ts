@@ -333,7 +333,7 @@ describe('cache-components-dev-streaming', () => {
     // Cold cache miss: validation runs against a separate warm-cache render.
     await expect(browser).toDisplayCollapsedRedbox(`
      {
-       "code": "E1295",
+       "code": "E1407",
        "description": "Next.js encountered the unstable value Date() while prerendering.",
        "environmentLabel": "Server",
        "label": "Blocking Route",
@@ -358,7 +358,7 @@ describe('cache-components-dev-streaming', () => {
     // and the cached value is re-served rather than recomputed.
     await expect(browser).toDisplayCollapsedRedbox(`
      {
-       "code": "E1295",
+       "code": "E1407",
        "description": "Next.js encountered the unstable value Date() while prerendering.",
        "environmentLabel": "Server",
        "label": "Blocking Route",

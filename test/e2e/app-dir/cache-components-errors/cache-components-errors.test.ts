@@ -1105,7 +1105,7 @@ describe('Cache Components Errors', () => {
 
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value Math.random() while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -1257,7 +1257,7 @@ describe('Cache Components Errors', () => {
 
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value Math.random() while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -2197,7 +2197,7 @@ describe('Cache Components Errors', () => {
 
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1287",
+               "code": "E1408",
                "description": "Next.js encountered the unstable value new Date() in a Client Component.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -2530,7 +2530,7 @@ describe('Cache Components Errors', () => {
 
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1287",
+               "code": "E1408",
                "description": "Next.js encountered the unstable value new Date() in a Client Component.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -5019,7 +5019,7 @@ Ways to fix this:
 
           await expect(browser).toDisplayCollapsedRedbox(`
            {
-             "code": "E1295",
+             "code": "E1407",
              "description": "Next.js encountered the unstable value Date() while prerendering.",
              "environmentLabel": "Server",
              "label": "Blocking Route",
@@ -5172,7 +5172,7 @@ Ways to fix this:
 
           await expect(browser).toDisplayCollapsedRedbox(`
            {
-             "code": "E1295",
+             "code": "E1407",
              "description": "Next.js encountered the unstable value Date.now() while prerendering.",
              "environmentLabel": "Server",
              "label": "Blocking Route",
@@ -5325,7 +5325,7 @@ Ways to fix this:
 
           await expect(browser).toDisplayCollapsedRedbox(`
            {
-             "code": "E1295",
+             "code": "E1407",
              "description": "Next.js encountered the unstable value new Date() while prerendering.",
              "environmentLabel": "Server",
              "label": "Blocking Route",
@@ -5478,7 +5478,7 @@ Ways to fix this:
 
           await expect(browser).toDisplayCollapsedRedbox(`
            {
-             "code": "E1295",
+             "code": "E1407",
              "description": "Next.js encountered the unstable value Math.random() while prerendering.",
              "environmentLabel": "Server",
              "label": "Blocking Route",
@@ -5623,7 +5623,7 @@ Ways to fix this:
 
           await expect(browser).toDisplayCollapsedRedbox(`
            {
-             "code": "E1295",
+             "code": "E1407",
              "description": "Next.js encountered the unstable value crypto.getRandomValues() while prerendering.",
              "environmentLabel": "Server",
              "label": "Blocking Route",
@@ -5771,7 +5771,7 @@ Ways to fix this:
 
           await expect(browser).toDisplayCollapsedRedbox(`
            {
-             "code": "E1295",
+             "code": "E1407",
              "description": "Next.js encountered the unstable value crypto.randomUUID() while prerendering.",
              "environmentLabel": "Server",
              "label": "Blocking Route",
@@ -5917,7 +5917,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').generateKeyPairSync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -5933,7 +5933,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').generateKeyPairSync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6083,7 +6083,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').generateKeySync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6099,7 +6099,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').generateKeySync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6249,7 +6249,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').generatePrimeSync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6265,7 +6265,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').generatePrimeSync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6415,7 +6415,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value crypto.getRandomValues() while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6431,7 +6431,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value crypto.getRandomValues() while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6581,7 +6581,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomBytes(size) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6597,7 +6597,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomBytes(size) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6747,7 +6747,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomFillSync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6763,7 +6763,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomFillSync(...) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6913,7 +6913,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomInt(min, max) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -6929,7 +6929,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomInt(min, max) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -7079,7 +7079,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomInt(min, max) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -7095,7 +7095,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomInt(min, max) while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -7245,7 +7245,7 @@ Ways to fix this:
           if (isTurbopack) {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomUUID() while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -7261,7 +7261,7 @@ Ways to fix this:
           } else {
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1295",
+               "code": "E1407",
                "description": "Next.js encountered the unstable value require('node:crypto').randomUUID() while prerendering.",
                "environmentLabel": "Server",
                "label": "Blocking Route",

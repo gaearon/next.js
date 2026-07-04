@@ -1034,7 +1034,7 @@ describe('instant validation', () => {
         )
         await expect(browser).toDisplayCollapsedRedbox(`
          {
-           "code": "E1295",
+           "code": "E1407",
            "description": "Next.js encountered the unstable value Date.now() while prerendering.",
            "environmentLabel": "Server",
            "label": "Blocking Route",
@@ -1095,7 +1095,7 @@ describe('instant validation', () => {
         )
         await expect(browser).toDisplayCollapsedRedbox(`
          {
-           "code": "E1295",
+           "code": "E1407",
            "description": "Next.js encountered the unstable value Date.now() while prerendering.",
            "environmentLabel": "Server",
            "label": "Blocking Route",
@@ -1162,7 +1162,7 @@ describe('instant validation', () => {
         )
         await expect(browser).toDisplayCollapsedRedbox(`
          {
-           "code": "E1295",
+           "code": "E1407",
            "description": "Next.js encountered the unstable value Date.now() while prerendering.",
            "environmentLabel": "Server",
            "label": "Blocking Route",
@@ -1253,7 +1253,7 @@ describe('instant validation', () => {
         )
         await expect(browser).toDisplayCollapsedRedbox(`
          {
-           "code": "E1295",
+           "code": "E1407",
            "description": "Next.js encountered the unstable value Date.now() while prerendering.",
            "environmentLabel": "Server",
            "label": "Blocking Route",
@@ -1332,7 +1332,7 @@ describe('instant validation', () => {
         )
         await expect(browser).toDisplayCollapsedRedbox(`
          {
-           "code": "E1295",
+           "code": "E1407",
            "description": "Next.js encountered the unstable value Date.now() while prerendering.",
            "environmentLabel": "Server",
            "label": "Blocking Route",

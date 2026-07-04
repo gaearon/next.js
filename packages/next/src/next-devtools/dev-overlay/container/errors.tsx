@@ -173,11 +173,13 @@ type DynamicViewportErrorDetails = {
 type SyncIOErrorDetails = {
   type: 'sync-io'
   cause: string
+  calledFrom: string | null
 }
 
 type SyncIOClientErrorDetails = {
   type: 'sync-io-client'
   cause: string
+  calledFrom: string | null
 }
 
 type UnrenderedSegmentErrorDetails = {
@@ -468,11 +470,14 @@ export function getBlockingRouteErrorDetails(
 
   if (isSyncIOError(message)) {
     const isClient = isSyncIOClientError(message)
+    const calledFromMatch =
+      /encountered the unstable value .+? from `([^`]+)`/.exec(message)
     for (const api of SYNC_IO_APIS) {
       if (message.includes(api)) {
         return {
           type: isClient ? 'sync-io-client' : 'sync-io',
           cause: api,
+          calledFrom: calledFromMatch === null ? null : calledFromMatch[1],
         }
       }
     }
@@ -1073,7 +1078,14 @@ export function Errors({
           errorMessage={
             <>
               Next.js encountered the unstable value{' '}
-              <code>{errorDetails.cause}</code> while prerendering.
+              <code>{errorDetails.cause}</code>
+              {errorDetails.calledFrom !== null ? (
+                <>
+                  {' from '}
+                  <code>{errorDetails.calledFrom}</code>
+                </>
+              ) : null}{' '}
+              while prerendering.
             </>
           }
           headerChildren={
@@ -1119,7 +1131,14 @@ export function Errors({
           errorMessage={
             <>
               Next.js encountered the unstable value{' '}
-              <code>{errorDetails.cause}</code> in a Client Component.
+              <code>{errorDetails.cause}</code>
+              {errorDetails.calledFrom !== null ? (
+                <>
+                  {' from '}
+                  <code>{errorDetails.calledFrom}</code>
+                </>
+              ) : null}{' '}
+              in a Client Component.
             </>
           }
           headerChildren={

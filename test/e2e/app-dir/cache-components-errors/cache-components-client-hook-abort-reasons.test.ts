@@ -1764,7 +1764,7 @@ describe('Cache Components Errors - Client Hook Abort Reasons', () => {
             // the snapshots.
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1287",
+               "code": "E1408",
                "description": "Next.js encountered the unstable value Date.now() in a Client Component.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -1790,7 +1790,7 @@ describe('Cache Components Errors - Client Hook Abort Reasons', () => {
             // the snapshots.
             await expect(browser).toDisplayCollapsedRedbox(`
              {
-               "code": "E1287",
+               "code": "E1408",
                "description": "Next.js encountered the unstable value Date.now() in a Client Component.",
                "environmentLabel": "Server",
                "label": "Blocking Route",
@@ -1817,7 +1817,7 @@ describe('Cache Components Errors - Client Hook Abort Reasons', () => {
             await expect(browser).toDisplayCollapsedRedbox(`
              [
                {
-                 "code": "E1287",
+                 "code": "E1408",
                  "description": "Next.js encountered the unstable value Date.now() in a Client Component.",
                  "environmentLabel": "Server",
                  "label": "Blocking Route",
@@ -1858,7 +1858,7 @@ describe('Cache Components Errors - Client Hook Abort Reasons', () => {
             await expect(browser).toDisplayCollapsedRedbox(`
              [
                {
-                 "code": "E1287",
+                 "code": "E1408",
                  "description": "Next.js encountered the unstable value Date.now() in a Client Component.",
                  "environmentLabel": "Server",
                  "label": "Blocking Route",
@@ -1895,7 +1895,7 @@ describe('Cache Components Errors - Client Hook Abort Reasons', () => {
             await expect(browser).toDisplayCollapsedRedbox(`
              [
                {
-                 "code": "E1287",
+                 "code": "E1408",
                  "description": "Next.js encountered the unstable value Date.now() in a Client Component.",
                  "environmentLabel": "Server",
                  "label": "Blocking Route",
