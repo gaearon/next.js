@@ -239,6 +239,18 @@ export function renderToNodeFlightStream(
   throw new Error('not implemented')
 }
 
+export function renderToNodeFlightRenderResult(
+  _ComponentMod: FlightComponentMod,
+  _payload: FlightPayload,
+  _clientModules: FlightClientModules,
+  _opts: FlightRenderOptions
+): {
+  result: import('react-server-dom-webpack/client').FlightRenderResult
+  stream: AnyStream
+} {
+  throw new Error('not implemented')
+}
+
 export function renderToWebFlightStream(
   ComponentMod: FlightComponentMod,
   payload: FlightPayload,

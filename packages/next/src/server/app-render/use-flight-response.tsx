@@ -1,6 +1,6 @@
 import type { BinaryStreamOf } from './app-render'
 import type { Readable } from 'node:stream'
-import type { ModelChannel } from 'react-server-dom-webpack/client'
+import type { FlightRenderResult } from 'react-server-dom-webpack/client'
 
 import {
   htmlEscapeAttributeString,
@@ -18,7 +18,7 @@ const INLINE_FLIGHT_PAYLOAD_FORM_STATE = 2
 const INLINE_FLIGHT_PAYLOAD_BINARY = 3
 
 const flightResponses = new WeakMap<
-  Readable | BinaryStreamOf<any> | ModelChannel,
+  Readable | BinaryStreamOf<any>,
   Promise<any>
 >()
 const encoder = new TextEncoder()
@@ -119,59 +119,39 @@ export function getFlightStream<T>(
 }
 
 /**
- * Consume Flight rows delivered in object form over a ModelChannel instead of
- * parsing a teed copy of the RSC byte stream. Only supported in the Node.js
- * runtime. The channel must have been passed as the `modelChannel` option to
- * the Flight server render that produces this response.
+ * Consume a Flight render() result in-process through the normal Flight
+ * Response instead of parsing a teed copy of the RSC byte stream. Only
+ * supported in the Node.js runtime. Must be called synchronously after the
+ * render is started, before it begins emitting. DEV debug rows arrive
+ * through the result itself (or leave on the server's debugChannel when one
+ * was provided to the render), so no debug stream is consumed here.
  */
-export function getFlightResponseFromModelChannel<T>(
-  channel: ModelChannel,
-  debugStream: Readable | ReadableStream<Uint8Array> | undefined,
-  debugEndTime: number | undefined,
+export function getFlightResponseFromRender<T>(
+  renderResult: FlightRenderResult,
   nonce: string | undefined
 ): Promise<T> {
-  const response = flightResponses.get(channel)
-
-  if (response) {
-    return response
-  }
-
   if (process.env.NEXT_RUNTIME === 'edge') {
     throw new InvariantError(
-      'getFlightResponseFromModelChannel is only supported in the Node.js runtime'
+      'getFlightResponseFromRender is only supported in the Node.js runtime'
     )
   }
 
-  if (process.env.NEXT_FLIGHT_MODEL_CHANNEL_DEBUG) {
+  if (process.env.NEXT_FLIGHT_RENDER_DEBUG) {
     console.error(
-      '[model-channel] SSR consuming Flight rows via ModelChannel (pid %d)',
+      '[flight-render] SSR consuming Flight in-process via createFromRender (pid %d)',
       process.pid
     )
   }
 
   const { moduleLoading, ssrModuleMapping } = getClientReferenceManifest()
 
-  // The Node.js-flavored createFromModelChannel takes a Node.js Readable as
-  // the debug channel. When __NEXT_USE_NODE_STREAMS is enabled, the debug
-  // channel produces Node Readables natively; otherwise convert.
-  let nodeDebugStream: Readable | undefined
-  if (debugStream) {
-    const { Readable } = require('node:stream') as typeof import('node:stream')
-    if (debugStream instanceof Readable) {
-      nodeDebugStream = debugStream
-    } else {
-      type WebReadableStream = import('stream/web').ReadableStream
-      nodeDebugStream = Readable.fromWeb(debugStream as WebReadableStream)
-    }
-  }
-
   // react-server-dom-webpack/client must not be hoisted for require cache clearing to work correctly
-  const { createFromModelChannel } =
+  const { createFromRender } =
     // eslint-disable-next-line import/no-extraneous-dependencies
     require('react-server-dom-webpack/client') as typeof import('react-server-dom-webpack/client')
 
-  const newResponse = createFromModelChannel<T>(
-    channel,
+  return createFromRender<T>(
+    renderResult,
     {
       moduleLoading,
       moduleMap: ssrModuleMapping,
@@ -180,16 +160,12 @@ export function getFlightResponseFromModelChannel<T>(
     {
       findSourceMapURL,
       nonce,
-      debugChannel: nodeDebugStream,
-      endTime: debugEndTime,
     }
   )
-
-  return cacheFlightResponse(channel, newResponse)
 }
 
 function cacheFlightResponse<T>(
-  key: Readable | BinaryStreamOf<any> | ModelChannel,
+  key: Readable | BinaryStreamOf<any>,
   newResponse: Promise<T>
 ): Promise<T> {
   // Edge pages are never prerendered so they necessarily cannot have a workUnitStore type
