@@ -18175,10 +18175,7 @@ ReactDOMHydrationRoot.prototype.unstable_scheduleHydration = function (target) {
   }
 };
 var isomorphicReactPackageVersion$jscomp$inline_2048 = React.version;
-if (
-  "19.3.0-canary-3508aee6-20260702" !==
-  isomorphicReactPackageVersion$jscomp$inline_2048
-)
+if ("19.3.0-canary-3508aee6-20260702" !== isomorphicReactPackageVersion$jscomp$inline_2048)
   throw Error(
     formatProdErrorMessage(
       527,

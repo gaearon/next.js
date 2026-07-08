@@ -2668,8 +2668,8 @@ function createFiberFromTypeAndProps(
 ) {
   var fiberTag = 0;
   owner = type;
-  if ("function" === typeof owner) shouldConstruct(owner) && (fiberTag = 1);
-  else if ("string" === typeof owner)
+  if ("function" === typeof type) shouldConstruct(type) && (fiberTag = 1);
+  else if ("string" === typeof type)
     fiberTag = isHostHoistableType(
       type,
       pendingProps,
@@ -2680,7 +2680,7 @@ function createFiberFromTypeAndProps(
         ? 27
         : 5;
   else
-    a: switch (owner) {
+    a: switch (type) {
       case REACT_ACTIVITY_TYPE:
         return (
           (type = createFiberImplClass(31, pendingProps, key, mode)),
@@ -2731,8 +2731,8 @@ function createFiberFromTypeAndProps(
           type
         );
       default:
-        if ("object" === typeof owner && null !== owner)
-          switch (owner.$$typeof) {
+        if ("object" === typeof type && null !== type)
+          switch (type.$$typeof) {
             case REACT_CONTEXT_TYPE:
               fiberTag = 10;
               break a;
@@ -3697,7 +3697,7 @@ function createChildReconciler(shouldTrackSideEffects) {
       return (
         (newIndex = newIndex.index),
         newIndex < lastPlacedIndex
-          ? ((newFiber.flags |= 2), lastPlacedIndex)
+          ? ((newFiber.flags |= 134217730), lastPlacedIndex)
           : newIndex
       );
     newFiber.flags |= 134217730;
@@ -15963,8 +15963,7 @@ function setProp(domElement, tag, key, value, props, prevValue) {
         key = value.__html;
         if (null != key) {
           if (null != props.children) throw Error(formatProdErrorMessage(60));
-          (null != prevValue ? prevValue.__html : void 0) !== key &&
-            (domElement.innerHTML = key);
+          domElement.innerHTML = key;
         }
       }
       break;
@@ -16181,8 +16180,7 @@ function setPropOnCustomElement(domElement, tag, key, value, props, prevValue) {
         key = value.__html;
         if (null != key) {
           if (null != props.children) throw Error(formatProdErrorMessage(60));
-          (null != prevValue ? prevValue.__html : void 0) !== key &&
-            (domElement.innerHTML = key);
+          domElement.innerHTML = key;
         }
       }
       break;
@@ -16218,20 +16216,20 @@ function setPropOnCustomElement(domElement, tag, key, value, props, prevValue) {
             "o" === key[0] &&
             "n" === key[1] &&
             ((props = key.endsWith("Capture")),
-            (prevValue = key.slice(2, props ? key.length - 7 : void 0)),
-            (tag = domElement[internalPropsKey] || null),
-            (tag = null != tag ? tag[key] : null),
-            "function" === typeof tag &&
-              domElement.removeEventListener(prevValue, tag, props),
+            (tag = key.slice(2, props ? key.length - 7 : void 0)),
+            (prevValue = domElement[internalPropsKey] || null),
+            (prevValue = null != prevValue ? prevValue[key] : null),
+            "function" === typeof prevValue &&
+              domElement.removeEventListener(tag, prevValue, props),
             "function" === typeof value)
           ) {
-            "function" !== typeof tag &&
-              null !== tag &&
+            "function" !== typeof prevValue &&
+              null !== prevValue &&
               (key in domElement
                 ? (domElement[key] = null)
                 : domElement.hasAttribute(key) &&
                   domElement.removeAttribute(key));
-            domElement.addEventListener(prevValue, value, props);
+            domElement.addEventListener(tag, value, props);
             break a;
           }
           viewTransitionMutationContext = !0;

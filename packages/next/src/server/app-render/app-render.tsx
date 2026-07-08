@@ -3702,7 +3702,10 @@ async function renderToStream(
           // Setting NEXT_FLIGHT_RENDER=0 restores the byte-stream tee for
           // SSR (used as the baseline when benchmarking this prototype).
           const useInProcessFlightRender =
-            process.env.NEXT_FLIGHT_RENDER !== '0'
+            process.env.NEXT_FLIGHT_RENDER !== '0' &&
+            // The vendored React must support render(); fall back to the
+            // byte-stream tee when it doesn't (e.g. an older React channel).
+            typeof ctx.componentMod.renderFlight === 'function'
 
           if (debugChannel) {
             if (useInProcessFlightRender) {

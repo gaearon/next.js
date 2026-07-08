@@ -1015,26 +1015,24 @@
       return kind;
     }
     function addObjectToProperties(object, properties, indent, prefix) {
-      if (!ArrayBuffer.isView(object)) {
-        var addedProperties = 0,
-          key;
-        for (key in object)
-          if (
-            hasOwnProperty.call(object, key) &&
-            "_" !== key[0] &&
-            (addedProperties++,
-            addValueToProperties(key, object[key], properties, indent, prefix),
-            100 <= addedProperties)
-          ) {
-            properties.push([
-              prefix +
-                "\u00a0\u00a0".repeat(indent) +
-                "Only 100 properties are shown. React will not log more properties of this object.",
-              ""
-            ]);
-            break;
-          }
-      }
+      var addedProperties = 0,
+        key;
+      for (key in object)
+        if (
+          hasOwnProperty.call(object, key) &&
+          "_" !== key[0] &&
+          (addedProperties++,
+          addValueToProperties(key, object[key], properties, indent, prefix),
+          100 <= addedProperties)
+        ) {
+          properties.push([
+            prefix +
+              "\u00a0\u00a0".repeat(indent) +
+              "Only 100 properties are shown. React will not log more properties of this object.",
+            ""
+          ]);
+          break;
+        }
     }
     function addValueToProperties(
       propertyName,
@@ -1113,23 +1111,15 @@
               return;
             }
             typeName = Object.prototype.toString.call(value);
-            typeName = typeName.slice(8, typeName.length - 1);
-            if (ArrayBuffer.isView(value)) {
-              value = value.length;
-              value =
-                "number" === typeof value
-                  ? typeName + "(" + value + ")"
-                  : typeName;
-              break;
-            }
-            if ("Array" === typeName)
+            propKey = typeName.slice(8, typeName.length - 1);
+            if ("Array" === propKey)
               if (
-                ((propKey = 100 < value.length),
+                ((typeName = 100 < value.length),
                 (key = getArrayKind(value)),
                 2 === key || 0 === key)
               ) {
                 value = JSON.stringify(
-                  propKey ? value.slice(0, 100).concat("\u2026") : value
+                  typeName ? value.slice(0, 100).concat("\u2026") : value
                 );
                 break;
               } else if (3 === key) {
@@ -1142,15 +1132,15 @@
                   propertyName < value.length && 100 > propertyName;
                   propertyName++
                 )
-                  (typeName = value[propertyName]),
+                  (propKey = value[propertyName]),
                     addValueToProperties(
-                      typeName[0],
-                      typeName[1],
+                      propKey[0],
+                      propKey[1],
                       properties,
                       indent + 1,
                       prefix
                     );
-                propKey &&
+                typeName &&
                   addValueToProperties(
                     (100).toString(),
                     "\u2026",
@@ -1160,7 +1150,7 @@
                   );
                 return;
               }
-            if ("Promise" === typeName) {
+            if ("Promise" === propKey) {
               if ("fulfilled" === value.status) {
                 if (
                   ((typeName = properties.length),
@@ -1200,13 +1190,13 @@
               ]);
               return;
             }
-            "Object" === typeName &&
-              (propKey = Object.getPrototypeOf(value)) &&
-              "function" === typeof propKey.constructor &&
-              (typeName = propKey.constructor.name);
+            "Object" === propKey &&
+              (typeName = Object.getPrototypeOf(value)) &&
+              "function" === typeof typeName.constructor &&
+              (propKey = typeName.constructor.name);
             properties.push([
               prefix + "\u00a0\u00a0".repeat(indent) + propertyName,
-              "Object" === typeName ? (3 > indent ? "" : "\u2026") : typeName
+              "Object" === propKey ? (3 > indent ? "" : "\u2026") : propKey
             ]);
             3 > indent &&
               addObjectToProperties(value, properties, indent + 1, prefix);

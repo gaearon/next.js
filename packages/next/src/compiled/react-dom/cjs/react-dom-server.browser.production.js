@@ -7461,11 +7461,7 @@ function ensureCorrectIsomorphicReactVersion() {
   var isomorphicReactPackageVersion = React.version;
   if ("19.3.0-canary-3508aee6-20260702" !== isomorphicReactPackageVersion)
     throw Error(
-      formatProdErrorMessage(
-        527,
-        isomorphicReactPackageVersion,
-        "19.3.0-canary-3508aee6-20260702"
-      )
+      formatProdErrorMessage(527, isomorphicReactPackageVersion, "19.3.0-canary-3508aee6-20260702")
     );
 }
 ensureCorrectIsomorphicReactVersion();
