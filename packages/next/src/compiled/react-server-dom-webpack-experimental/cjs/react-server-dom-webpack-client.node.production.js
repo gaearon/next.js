@@ -134,8 +134,51 @@ function prepareDestinationWithChunks(moduleLoading, chunks, nonce$jscomp$0) {
     }
 }
 var ReactDOMSharedInternals =
-    ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-  REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"),
+  ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+function dispatchHint(code, model) {
+  var dispatcher = ReactDOMSharedInternals.d;
+  switch (code) {
+    case "D":
+      dispatcher.D(model);
+      break;
+    case "C":
+      "string" === typeof model
+        ? dispatcher.C(model)
+        : dispatcher.C(model[0], model[1]);
+      break;
+    case "L":
+      code = model[0];
+      var as = model[1];
+      3 === model.length
+        ? dispatcher.L(code, as, model[2])
+        : dispatcher.L(code, as);
+      break;
+    case "m":
+      "string" === typeof model
+        ? dispatcher.m(model)
+        : dispatcher.m(model[0], model[1]);
+      break;
+    case "X":
+      "string" === typeof model
+        ? dispatcher.X(model)
+        : dispatcher.X(model[0], model[1]);
+      break;
+    case "S":
+      "string" === typeof model
+        ? dispatcher.S(model)
+        : dispatcher.S(
+            model[0],
+            0 === model[1] ? void 0 : model[1],
+            3 === model.length ? model[2] : void 0
+          );
+      break;
+    case "M":
+      "string" === typeof model
+        ? dispatcher.M(model)
+        : dispatcher.M(model[0], model[1]);
+  }
+}
+var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"),
   REACT_LAZY_TYPE = Symbol.for("react.lazy"),
   MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
 function getIteratorFn(maybeIterable) {
@@ -864,19 +907,10 @@ function triggerErrorOnChunk(response, chunk, error) {
     null !== listeners && rejectChunk(response, listeners, error);
   }
 }
-function createResolvedIteratorResultChunk(response, value, done) {
-  return new ReactPromise(
-    "resolved_model",
-    (done ? '{"done":true,"value":' : '{"done":false,"value":') + value + "}",
-    response
-  );
-}
-function resolveIteratorResultChunk(response, chunk, value, done) {
-  resolveModelChunk(
-    response,
-    chunk,
-    (done ? '{"done":true,"value":' : '{"done":false,"value":') + value + "}"
-  );
+function wrapIteratorResultModel(value, done) {
+  return "string" === typeof value
+    ? (done ? '{"done":true,"value":' : '{"done":false,"value":') + value + "}"
+    : { done: done, value: value };
 }
 function resolveModelChunk(response, chunk, value) {
   if ("pending" !== chunk.status) chunk.reason.enqueueModel(value);
@@ -1537,6 +1571,22 @@ function ResponseInstance(
 function createStreamState() {
   return { _rowState: 0, _rowID: 0, _rowTag: 0, _rowLength: 0, _buffer: [] };
 }
+function resolveModel(response, id, model) {
+  var chunks = response._chunks,
+    chunk = chunks.get(id);
+  chunk
+    ? resolveModelChunk(response, chunk, model)
+    : ((response = new ReactPromise("resolved_model", model, response)),
+      chunks.set(id, response));
+}
+function resolveText(response, id, text) {
+  response = response._chunks;
+  var chunk = response.get(id);
+  chunk && "pending" !== chunk.status
+    ? chunk.reason.enqueueValue(text)
+    : ((text = new ReactPromise("fulfilled", text, null)),
+      response.set(id, text));
+}
 function resolveBuffer(response, id, buffer) {
   response = response._chunks;
   var chunk = response.get(id);
@@ -1727,46 +1777,47 @@ function startAsyncIterable(response, id, iterator) {
         nextWriteIndex++;
       },
       enqueueModel: function (value) {
-        nextWriteIndex === buffer.length
-          ? (buffer[nextWriteIndex] = createResolvedIteratorResultChunk(
-              response,
-              value,
-              !1
-            ))
-          : resolveIteratorResultChunk(
-              response,
-              buffer[nextWriteIndex],
-              value,
-              !1
-            );
+        if (nextWriteIndex === buffer.length) {
+          var JSCompiler_temp_const = nextWriteIndex;
+          value = new ReactPromise(
+            "resolved_model",
+            wrapIteratorResultModel(value, !1),
+            response
+          );
+          buffer[JSCompiler_temp_const] = value;
+        } else
+          resolveModelChunk(
+            response,
+            buffer[nextWriteIndex],
+            wrapIteratorResultModel(value, !1)
+          );
         nextWriteIndex++;
       },
       close: function (value) {
-        if (!closed)
-          for (
-            closed = !0,
-              nextWriteIndex === buffer.length
-                ? (buffer[nextWriteIndex] = createResolvedIteratorResultChunk(
-                    response,
-                    value,
-                    !0
-                  ))
-                : resolveIteratorResultChunk(
-                    response,
-                    buffer[nextWriteIndex],
-                    value,
-                    !0
-                  ),
-              nextWriteIndex++;
-            nextWriteIndex < buffer.length;
-
-          )
-            resolveIteratorResultChunk(
-              response,
-              buffer[nextWriteIndex++],
-              '"$undefined"',
-              !0
+        if (!closed) {
+          closed = !0;
+          if (nextWriteIndex === buffer.length) {
+            var JSCompiler_temp_const = nextWriteIndex;
+            value = new ReactPromise(
+              "resolved_model",
+              wrapIteratorResultModel(value, !0),
+              response
             );
+            buffer[JSCompiler_temp_const] = value;
+          } else
+            resolveModelChunk(
+              response,
+              buffer[nextWriteIndex],
+              wrapIteratorResultModel(value, !0)
+            );
+          for (nextWriteIndex++; nextWriteIndex < buffer.length; )
+            (JSCompiler_temp_const = buffer[nextWriteIndex++]),
+              resolveModelChunk(
+                response,
+                JSCompiler_temp_const,
+                wrapIteratorResultModel('"$undefined"', !0)
+              );
+        }
       },
       error: function (error) {
         if (!closed)
@@ -1782,12 +1833,28 @@ function startAsyncIterable(response, id, iterator) {
     }
   );
 }
+function stopStream(response, id, row) {
+  (response = response._chunks.get(id)) &&
+    "fulfilled" === response.status &&
+    response.reason.close("" === row ? '"$undefined"' : row);
+}
 function resolveErrorProd() {
   var error = Error(
     "An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error."
   );
   error.stack = "Error: " + error.message;
   return error;
+}
+function resolveErrorModel(response, id, row) {
+  var chunks = response._chunks,
+    chunk = chunks.get(id);
+  row = "string" === typeof row ? JSON.parse(row) : row;
+  var error = resolveErrorProd();
+  error.digest = row.digest;
+  chunk
+    ? triggerErrorOnChunk(response, chunk, error)
+    : ((response = new ReactPromise("rejected", null, error)),
+      chunks.set(id, response));
 }
 function mergeBuffer(buffer, lastChunk) {
   for (var l = buffer.length, byteLength = lastChunk.length, i = 0; i < l; i++)
@@ -1881,68 +1948,16 @@ function processFullStringRow(response, streamState, id, tag, row) {
       resolveModule(response, id, row);
       break;
     case 72:
-      id = row[0];
+      streamState = row[0];
       row = row.slice(1);
       response = parseModel(response, row);
-      row = ReactDOMSharedInternals.d;
-      switch (id) {
-        case "D":
-          row.D(response);
-          break;
-        case "C":
-          "string" === typeof response
-            ? row.C(response)
-            : row.C(response[0], response[1]);
-          break;
-        case "L":
-          id = response[0];
-          streamState = response[1];
-          3 === response.length
-            ? row.L(id, streamState, response[2])
-            : row.L(id, streamState);
-          break;
-        case "m":
-          "string" === typeof response
-            ? row.m(response)
-            : row.m(response[0], response[1]);
-          break;
-        case "X":
-          "string" === typeof response
-            ? row.X(response)
-            : row.X(response[0], response[1]);
-          break;
-        case "S":
-          "string" === typeof response
-            ? row.S(response)
-            : row.S(
-                response[0],
-                0 === response[1] ? void 0 : response[1],
-                3 === response.length ? response[2] : void 0
-              );
-          break;
-        case "M":
-          "string" === typeof response
-            ? row.M(response)
-            : row.M(response[0], response[1]);
-      }
+      dispatchHint(streamState, response);
       break;
     case 69:
-      streamState = response._chunks;
-      tag = streamState.get(id);
-      row = JSON.parse(row);
-      var error = resolveErrorProd();
-      error.digest = row.digest;
-      tag
-        ? triggerErrorOnChunk(response, tag, error)
-        : ((response = new ReactPromise("rejected", null, error)),
-          streamState.set(id, response));
+      resolveErrorModel(response, id, row);
       break;
     case 84:
-      response = response._chunks;
-      (streamState = response.get(id)) && "pending" !== streamState.status
-        ? streamState.reason.enqueueValue(row)
-        : ((row = new ReactPromise("fulfilled", row, null)),
-          response.set(id, row));
+      resolveText(response, id, row);
       break;
     case 78:
     case 68:
@@ -1964,16 +1979,10 @@ function processFullStringRow(response, streamState, id, tag, row) {
       startAsyncIterable(response, id, !0);
       break;
     case 67:
-      (id = response._chunks.get(id)) &&
-        "fulfilled" === id.status &&
-        id.reason.close("" === row ? '"$undefined"' : row);
+      stopStream(response, id, row);
       break;
     default:
-      (streamState = response._chunks),
-        (tag = streamState.get(id))
-          ? resolveModelChunk(response, tag, row)
-          : ((response = new ReactPromise("resolved_model", row, response)),
-            streamState.set(id, response));
+      resolveModel(response, id, row);
   }
 }
 function processBinaryChunk(weakResponse, streamState, chunk) {
@@ -2071,7 +2080,7 @@ function processBinaryChunk(weakResponse, streamState, chunk) {
   streamState._rowLength = rowLength;
 }
 function parseModel(response, json) {
-  json = JSON.parse(json);
+  json = "string" === typeof json ? JSON.parse(json) : json;
   return reviveModel(response, json, { "": json }, "");
 }
 function reviveModel(response, value, parentObject, key) {
@@ -2131,6 +2140,20 @@ function close(weakResponse) {
             chunk.reason.close('"$undefined"');
       }))
     : reportGlobalError(weakResponse, Error("Connection closed."));
+}
+function connectModelChannel(channel, sink) {
+  if (null !== channel._sink)
+    throw Error("A ModelChannel can only have a single consumer.");
+  channel._sink = sink;
+  var buffer = channel._buffer;
+  if (null !== buffer) {
+    channel._buffer = null;
+    for (var i = 0; i < buffer.length; i += 3)
+      sink.row(buffer[i], buffer[i + 1], buffer[i + 2]);
+  }
+  1 === channel._status
+    ? sink.close()
+    : 2 === channel._status && sink.error(channel._errorReason);
 }
 function noServerCall$1() {
   throw Error(
@@ -2280,6 +2303,119 @@ exports.createFromFetch = function (promiseForResponse, options) {
   );
   return getChunk(response, 0);
 };
+exports.createFromModelChannel = function (channel, options) {
+  var response = createResponseFromOptions(options);
+  createStreamState();
+  options = close.bind(null, response);
+  connectModelChannel(channel, {
+    row: function (id, tag, payload) {
+      switch (tag) {
+        case "":
+        case "P":
+          if (void 0 === payload) {
+            resolveModel(response, id, "");
+            break;
+          }
+          resolveModel(response, id, payload);
+          break;
+        case "I":
+          resolveModule(response, id, payload);
+          break;
+        case "E":
+          resolveErrorModel(response, id, payload);
+          break;
+        case "T":
+          resolveText(response, id, payload);
+          break;
+        case "N":
+        case "D":
+        case "J":
+        case "W":
+          throw Error(
+            "Failed to read a RSC payload created by a development version of React on the server while using a production version on the client. Always use matching versions on the server and the client."
+          );
+        case "R":
+          startReadableStream(response, id, void 0);
+          break;
+        case "r":
+          startReadableStream(response, id, "bytes");
+          break;
+        case "X":
+          startAsyncIterable(response, id, !1);
+          break;
+        case "x":
+          startAsyncIterable(response, id, !0);
+          break;
+        case "C":
+          stopStream(response, id, void 0 === payload ? "" : payload);
+          break;
+        case "b":
+          resolveBuffer(response, id, payload);
+          break;
+        case "A":
+          resolveBuffer(
+            response,
+            id,
+            0 === payload.byteOffset &&
+              payload.byteLength === payload.buffer.byteLength
+              ? payload.buffer
+              : payload.slice().buffer
+          );
+          break;
+        case "O":
+          resolveTypedArray(response, id, [], payload, Int8Array, 1);
+          break;
+        case "o":
+          resolveBuffer(response, id, payload);
+          break;
+        case "U":
+          resolveTypedArray(response, id, [], payload, Uint8ClampedArray, 1);
+          break;
+        case "S":
+          resolveTypedArray(response, id, [], payload, Int16Array, 2);
+          break;
+        case "s":
+          resolveTypedArray(response, id, [], payload, Uint16Array, 2);
+          break;
+        case "L":
+          resolveTypedArray(response, id, [], payload, Int32Array, 4);
+          break;
+        case "l":
+          resolveTypedArray(response, id, [], payload, Uint32Array, 4);
+          break;
+        case "G":
+          resolveTypedArray(response, id, [], payload, Float32Array, 4);
+          break;
+        case "g":
+          resolveTypedArray(response, id, [], payload, Float64Array, 8);
+          break;
+        case "M":
+          resolveTypedArray(response, id, [], payload, BigInt64Array, 8);
+          break;
+        case "m":
+          resolveTypedArray(response, id, [], payload, BigUint64Array, 8);
+          break;
+        case "V":
+          resolveTypedArray(response, id, [], payload, DataView, 1);
+          break;
+        default:
+          if (72 === tag.charCodeAt(0))
+            (id = tag.slice(1)),
+              (payload = parseModel(response, payload)),
+              dispatchHint(id, payload);
+          else
+            throw Error(
+              "Unknown row tag. The ModelChannel was not wired up properly."
+            );
+      }
+    },
+    close: options,
+    error: function (reason) {
+      return reportGlobalError(response, reason);
+    }
+  });
+  return getChunk(response, 0);
+};
 exports.createFromNodeStream = function (
   stream,
   serverConsumerManifest,
@@ -2308,6 +2444,33 @@ exports.createFromReadableStream = function (stream, options) {
   options = createResponseFromOptions(options);
   startReadingFromStream$1(options, stream, close.bind(null, options));
   return getChunk(options, 0);
+};
+exports.createModelChannel = function () {
+  var channel = {
+    _sink: null,
+    _buffer: null,
+    _status: 0,
+    _errorReason: null,
+    push: function (id, tag, payload) {
+      var sink = channel._sink;
+      null !== sink
+        ? sink.row(id, tag, payload)
+        : ((sink = channel._buffer),
+          null === sink && (sink = channel._buffer = []),
+          sink.push(id, tag, payload));
+    },
+    close: function () {
+      var sink = channel._sink;
+      null !== sink ? sink.close() : (channel._status = 1);
+    },
+    error: function (reason) {
+      var sink = channel._sink;
+      null !== sink
+        ? sink.error(reason)
+        : ((channel._status = 2), (channel._errorReason = reason));
+    }
+  };
+  return channel;
 };
 exports.createServerReference = function (id) {
   return createServerReference$1(id, noServerCall$1);

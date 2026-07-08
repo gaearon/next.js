@@ -965,24 +965,26 @@
       return kind;
     }
     function addObjectToProperties(object, properties, indent, prefix) {
-      var addedProperties = 0,
-        key;
-      for (key in object)
-        if (
-          hasOwnProperty.call(object, key) &&
-          "_" !== key[0] &&
-          (addedProperties++,
-          addValueToProperties(key, object[key], properties, indent, prefix),
-          100 <= addedProperties)
-        ) {
-          properties.push([
-            prefix +
-              "\u00a0\u00a0".repeat(indent) +
-              "Only 100 properties are shown. React will not log more properties of this object.",
-            ""
-          ]);
-          break;
-        }
+      if (!ArrayBuffer.isView(object)) {
+        var addedProperties = 0,
+          key;
+        for (key in object)
+          if (
+            hasOwnProperty.call(object, key) &&
+            "_" !== key[0] &&
+            (addedProperties++,
+            addValueToProperties(key, object[key], properties, indent, prefix),
+            100 <= addedProperties)
+          ) {
+            properties.push([
+              prefix +
+                "\u00a0\u00a0".repeat(indent) +
+                "Only 100 properties are shown. React will not log more properties of this object.",
+              ""
+            ]);
+            break;
+          }
+      }
     }
     function addValueToProperties(
       propertyName,
@@ -1061,15 +1063,23 @@
               return;
             }
             typeName = Object.prototype.toString.call(value);
-            propKey = typeName.slice(8, typeName.length - 1);
-            if ("Array" === propKey)
+            typeName = typeName.slice(8, typeName.length - 1);
+            if (ArrayBuffer.isView(value)) {
+              value = value.length;
+              value =
+                "number" === typeof value
+                  ? typeName + "(" + value + ")"
+                  : typeName;
+              break;
+            }
+            if ("Array" === typeName)
               if (
-                ((typeName = 100 < value.length),
+                ((propKey = 100 < value.length),
                 (key = getArrayKind(value)),
                 2 === key || 0 === key)
               ) {
                 value = JSON.stringify(
-                  typeName ? value.slice(0, 100).concat("\u2026") : value
+                  propKey ? value.slice(0, 100).concat("\u2026") : value
                 );
                 break;
               } else if (3 === key) {
@@ -1082,15 +1092,15 @@
                   propertyName < value.length && 100 > propertyName;
                   propertyName++
                 )
-                  (propKey = value[propertyName]),
+                  (typeName = value[propertyName]),
                     addValueToProperties(
-                      propKey[0],
-                      propKey[1],
+                      typeName[0],
+                      typeName[1],
                       properties,
                       indent + 1,
                       prefix
                     );
-                typeName &&
+                propKey &&
                   addValueToProperties(
                     (100).toString(),
                     "\u2026",
@@ -1100,7 +1110,7 @@
                   );
                 return;
               }
-            if ("Promise" === propKey) {
+            if ("Promise" === typeName) {
               if ("fulfilled" === value.status) {
                 if (
                   ((typeName = properties.length),
@@ -1140,13 +1150,13 @@
               ]);
               return;
             }
-            "Object" === propKey &&
-              (typeName = Object.getPrototypeOf(value)) &&
-              "function" === typeof typeName.constructor &&
-              (propKey = typeName.constructor.name);
+            "Object" === typeName &&
+              (propKey = Object.getPrototypeOf(value)) &&
+              "function" === typeof propKey.constructor &&
+              (typeName = propKey.constructor.name);
             properties.push([
               prefix + "\u00a0\u00a0".repeat(indent) + propertyName,
-              "Object" === propKey ? (3 > indent ? "" : "\u2026") : propKey
+              "Object" === typeName ? (3 > indent ? "" : "\u2026") : typeName
             ]);
             3 > indent &&
               addObjectToProperties(value, properties, indent + 1, prefix);
@@ -1685,23 +1695,12 @@
     function createResolvedModelChunk(response, value) {
       return new ReactPromise("resolved_model", value, response);
     }
-    function createResolvedIteratorResultChunk(response, value, done) {
-      return new ReactPromise(
-        "resolved_model",
-        (done ? '{"done":true,"value":' : '{"done":false,"value":') +
-          value +
-          "}",
-        response
-      );
-    }
-    function resolveIteratorResultChunk(response, chunk, value, done) {
-      resolveModelChunk(
-        response,
-        chunk,
-        (done ? '{"done":true,"value":' : '{"done":false,"value":') +
-          value +
-          "}"
-      );
+    function wrapIteratorResultModel(value, done) {
+      return "string" === typeof value
+        ? (done ? '{"done":true,"value":' : '{"done":false,"value":') +
+            value +
+            "}"
+        : { done: done, value: value };
     }
     function resolveModelChunk(response, chunk, value) {
       if ("pending" !== chunk.status) chunk.reason.enqueueModel(value);
@@ -3178,43 +3177,47 @@
             nextWriteIndex++;
           },
           enqueueModel: function (value) {
-            nextWriteIndex === buffer.length
-              ? (buffer[nextWriteIndex] = createResolvedIteratorResultChunk(
-                  response,
-                  value,
-                  !1
-                ))
-              : resolveIteratorResultChunk(
-                  response,
-                  buffer[nextWriteIndex],
-                  value,
-                  !1
-                );
+            if (nextWriteIndex === buffer.length) {
+              var JSCompiler_temp_const = nextWriteIndex;
+              value = new ReactPromise(
+                "resolved_model",
+                wrapIteratorResultModel(value, !1),
+                response
+              );
+              buffer[JSCompiler_temp_const] = value;
+            } else
+              resolveModelChunk(
+                response,
+                buffer[nextWriteIndex],
+                wrapIteratorResultModel(value, !1)
+              );
             nextWriteIndex++;
           },
           close: function (value) {
-            if (!closed)
-              for (
-                closed = !0,
-                  nextWriteIndex === buffer.length
-                    ? (buffer[nextWriteIndex] =
-                        createResolvedIteratorResultChunk(response, value, !0))
-                    : resolveIteratorResultChunk(
-                        response,
-                        buffer[nextWriteIndex],
-                        value,
-                        !0
-                      ),
-                  nextWriteIndex++;
-                nextWriteIndex < buffer.length;
-
-              )
-                resolveIteratorResultChunk(
-                  response,
-                  buffer[nextWriteIndex++],
-                  '"$undefined"',
-                  !0
+            if (!closed) {
+              closed = !0;
+              if (nextWriteIndex === buffer.length) {
+                var JSCompiler_temp_const = nextWriteIndex;
+                value = new ReactPromise(
+                  "resolved_model",
+                  wrapIteratorResultModel(value, !0),
+                  response
                 );
+                buffer[JSCompiler_temp_const] = value;
+              } else
+                resolveModelChunk(
+                  response,
+                  buffer[nextWriteIndex],
+                  wrapIteratorResultModel(value, !0)
+                );
+              for (nextWriteIndex++; nextWriteIndex < buffer.length; )
+                (JSCompiler_temp_const = buffer[nextWriteIndex++]),
+                  resolveModelChunk(
+                    response,
+                    JSCompiler_temp_const,
+                    wrapIteratorResultModel('"$undefined"', !0)
+                  );
+            }
           },
           error: function (error) {
             if (!closed)
@@ -4452,7 +4455,7 @@
         case 69:
           tag = response._chunks;
           var chunk = tag.get(id);
-          row = JSON.parse(row);
+          row = "string" === typeof row ? JSON.parse(row) : row;
           var error = resolveErrorDev(response, row);
           error.digest = row.digest;
           chunk
@@ -4647,7 +4650,7 @@
       }
     }
     function parseModel(response, json) {
-      json = JSON.parse(json);
+      json = "string" === typeof json ? JSON.parse(json) : json;
       return reviveModel(response, json, { "": json }, "");
     }
     function reviveModel(response, value, parentObject, key) {
@@ -5175,10 +5178,10 @@
       return hook.checkDCE ? !0 : !1;
     })({
       bundleType: 1,
-      version: "19.3.0-experimental-3508aee6-20260702",
+      version: "19.3.0",
       rendererPackageName: "react-server-dom-turbopack",
       currentDispatcherRef: ReactSharedInternals,
-      reconcilerVersion: "19.3.0-experimental-3508aee6-20260702",
+      reconcilerVersion: "19.3.0",
       getCurrentComponentInfo: function () {
         return currentOwnerInDEV;
       }

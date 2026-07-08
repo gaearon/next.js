@@ -1,5 +1,6 @@
 import type { BinaryStreamOf } from './app-render'
 import type { Readable } from 'node:stream'
+import type { ModelChannel } from 'react-server-dom-webpack/client'
 
 import {
   htmlEscapeAttributeString,
@@ -17,7 +18,7 @@ const INLINE_FLIGHT_PAYLOAD_FORM_STATE = 2
 const INLINE_FLIGHT_PAYLOAD_BINARY = 3
 
 const flightResponses = new WeakMap<
-  Readable | BinaryStreamOf<any>,
+  Readable | BinaryStreamOf<any> | ModelChannel,
   Promise<any>
 >()
 const encoder = new TextEncoder()
@@ -114,6 +115,79 @@ export function getFlightStream<T>(
     }
   }
 
+  return cacheFlightResponse(flightStream, newResponse)
+}
+
+/**
+ * Consume Flight rows delivered in object form over a ModelChannel instead of
+ * parsing a teed copy of the RSC byte stream. Only supported in the Node.js
+ * runtime. The channel must have been passed as the `modelChannel` option to
+ * the Flight server render that produces this response.
+ */
+export function getFlightResponseFromModelChannel<T>(
+  channel: ModelChannel,
+  debugStream: Readable | ReadableStream<Uint8Array> | undefined,
+  debugEndTime: number | undefined,
+  nonce: string | undefined
+): Promise<T> {
+  const response = flightResponses.get(channel)
+
+  if (response) {
+    return response
+  }
+
+  if (process.env.NEXT_RUNTIME === 'edge') {
+    throw new InvariantError(
+      'getFlightResponseFromModelChannel is only supported in the Node.js runtime'
+    )
+  }
+
+  if (process.env.NEXT_FLIGHT_MODEL_CHANNEL_DEBUG) {
+    console.error(
+      '[model-channel] SSR consuming Flight rows via ModelChannel (pid %d)',
+      process.pid
+    )
+  }
+
+  const { moduleLoading, ssrModuleMapping } = getClientReferenceManifest()
+
+  // createFromModelChannel shares the edge client implementation, so the
+  // debug channel must be a web ReadableStream even in the Node.js runtime.
+  let webDebugStream: ReadableStream<Uint8Array> | undefined
+  if (debugStream) {
+    if (debugStream instanceof ReadableStream) {
+      webDebugStream = debugStream
+    } else {
+      const { Readable } =
+        require('node:stream') as typeof import('node:stream')
+      webDebugStream = Readable.toWeb(debugStream) as ReadableStream<Uint8Array>
+    }
+  }
+
+  // react-server-dom-webpack/client must not be hoisted for require cache clearing to work correctly
+  const { createFromModelChannel } =
+    // eslint-disable-next-line import/no-extraneous-dependencies
+    require('react-server-dom-webpack/client') as typeof import('react-server-dom-webpack/client')
+
+  const newResponse = createFromModelChannel<T>(channel, {
+    findSourceMapURL,
+    serverConsumerManifest: {
+      moduleLoading,
+      moduleMap: ssrModuleMapping,
+      serverModuleMap: null,
+    },
+    nonce,
+    debugChannel: webDebugStream ? { readable: webDebugStream } : undefined,
+    endTime: debugEndTime,
+  })
+
+  return cacheFlightResponse(channel, newResponse)
+}
+
+function cacheFlightResponse<T>(
+  key: Readable | BinaryStreamOf<any> | ModelChannel,
+  newResponse: Promise<T>
+): Promise<T> {
   // Edge pages are never prerendered so they necessarily cannot have a workUnitStore type
   // that requires the nextTick behavior. This is why it is safe to access a node only API here
   if (process.env.NEXT_RUNTIME !== 'edge') {
@@ -131,7 +205,7 @@ export function getFlightStream<T>(
             resolve(newResponse)
           })
         })
-        flightResponses.set(flightStream, responseOnNextTick)
+        flightResponses.set(key, responseOnNextTick)
         return responseOnNextTick
       case 'prerender':
       case 'prerender-runtime':
@@ -148,7 +222,7 @@ export function getFlightStream<T>(
     }
   }
 
-  flightResponses.set(flightStream, newResponse)
+  flightResponses.set(key, newResponse)
 
   return newResponse
 }

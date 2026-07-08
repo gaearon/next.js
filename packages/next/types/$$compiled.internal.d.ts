@@ -75,6 +75,28 @@ declare module 'react-server-dom-webpack/client' {
     }
   ): Promise<T>
 
+  // A ModelChannel transports completed Flight rows between a Flight server
+  // and a Flight client in the same process without serializing them into the
+  // wire format. Create it on the consuming side, pass it as the
+  // `modelChannel` option to the Flight server render, and consume it with
+  // createFromModelChannel.
+  export type ModelChannel = {
+    push: (id: number, tag: string, payload: unknown) => void
+    close: () => void
+    error: (reason: unknown) => void
+  }
+
+  export function createModelChannel(): ModelChannel
+
+  export function createFromModelChannel<T>(
+    channel: ModelChannel,
+    options?: Omit<Options, 'debugChannel'> & {
+      // Shares the edge client implementation: the debug channel readable
+      // must be a web ReadableStream even in the Node.js runtime.
+      debugChannel?: { readable?: ReadableStream }
+    }
+  ): Promise<T>
+
   export function createServerReference(
     id: string,
     callServer: CallServerCallback,

@@ -679,19 +679,10 @@ function triggerErrorOnChunk(response, chunk, error) {
     null !== listeners && rejectChunk(response, listeners, error);
   }
 }
-function createResolvedIteratorResultChunk(response, value, done) {
-  return new ReactPromise(
-    "resolved_model",
-    (done ? '{"done":true,"value":' : '{"done":false,"value":') + value + "}",
-    response
-  );
-}
-function resolveIteratorResultChunk(response, chunk, value, done) {
-  resolveModelChunk(
-    response,
-    chunk,
-    (done ? '{"done":true,"value":' : '{"done":false,"value":') + value + "}"
-  );
+function wrapIteratorResultModel(value, done) {
+  return "string" === typeof value
+    ? (done ? '{"done":true,"value":' : '{"done":false,"value":') + value + "}"
+    : { done: done, value: value };
 }
 function resolveModelChunk(response, chunk, value) {
   if ("pending" !== chunk.status) chunk.reason.enqueueModel(value);
@@ -1512,46 +1503,47 @@ function startAsyncIterable(response, id, iterator) {
         nextWriteIndex++;
       },
       enqueueModel: function (value) {
-        nextWriteIndex === buffer.length
-          ? (buffer[nextWriteIndex] = createResolvedIteratorResultChunk(
-              response,
-              value,
-              !1
-            ))
-          : resolveIteratorResultChunk(
-              response,
-              buffer[nextWriteIndex],
-              value,
-              !1
-            );
+        if (nextWriteIndex === buffer.length) {
+          var JSCompiler_temp_const = nextWriteIndex;
+          value = new ReactPromise(
+            "resolved_model",
+            wrapIteratorResultModel(value, !1),
+            response
+          );
+          buffer[JSCompiler_temp_const] = value;
+        } else
+          resolveModelChunk(
+            response,
+            buffer[nextWriteIndex],
+            wrapIteratorResultModel(value, !1)
+          );
         nextWriteIndex++;
       },
       close: function (value) {
-        if (!closed)
-          for (
-            closed = !0,
-              nextWriteIndex === buffer.length
-                ? (buffer[nextWriteIndex] = createResolvedIteratorResultChunk(
-                    response,
-                    value,
-                    !0
-                  ))
-                : resolveIteratorResultChunk(
-                    response,
-                    buffer[nextWriteIndex],
-                    value,
-                    !0
-                  ),
-              nextWriteIndex++;
-            nextWriteIndex < buffer.length;
-
-          )
-            resolveIteratorResultChunk(
-              response,
-              buffer[nextWriteIndex++],
-              '"$undefined"',
-              !0
+        if (!closed) {
+          closed = !0;
+          if (nextWriteIndex === buffer.length) {
+            var JSCompiler_temp_const = nextWriteIndex;
+            value = new ReactPromise(
+              "resolved_model",
+              wrapIteratorResultModel(value, !0),
+              response
             );
+            buffer[JSCompiler_temp_const] = value;
+          } else
+            resolveModelChunk(
+              response,
+              buffer[nextWriteIndex],
+              wrapIteratorResultModel(value, !0)
+            );
+          for (nextWriteIndex++; nextWriteIndex < buffer.length; )
+            (JSCompiler_temp_const = buffer[nextWriteIndex++]),
+              resolveModelChunk(
+                response,
+                JSCompiler_temp_const,
+                wrapIteratorResultModel('"$undefined"', !0)
+              );
+        }
       },
       error: function (error) {
         if (!closed)
@@ -1706,7 +1698,7 @@ function processFullBinaryRow(response, streamState, id, tag, buffer, chunk) {
     case 69:
       tag = response._chunks;
       chunk = tag.get(id);
-      buffer = JSON.parse(buffer);
+      buffer = "string" === typeof buffer ? JSON.parse(buffer) : buffer;
       streamState = resolveErrorProd();
       streamState.digest = buffer.digest;
       chunk
@@ -1752,7 +1744,7 @@ function processFullBinaryRow(response, streamState, id, tag, buffer, chunk) {
   }
 }
 function parseModel(response, json) {
-  json = JSON.parse(json);
+  json = "string" === typeof json ? JSON.parse(json) : json;
   return reviveModel(response, json, { "": json }, "");
 }
 function reviveModel(response, value, parentObject, key) {

@@ -889,10 +889,7 @@
                   "Unknown Value: React could not send it from the server."
                 ]
               ));
-            JSCompiler_inline_result = stringToChunk(
-              ":W" + previousPrepare + "\n"
-            );
-            request.completedDebugChunks.push(JSCompiler_inline_result);
+            request.completedDebugChunks.push([0, "W", previousPrepare]);
           }
           return originalMethod.apply(this, arguments);
         };
@@ -988,7 +985,9 @@
       debugStartTime,
       environmentName,
       filterStackFrame,
-      keepDebugAlive
+      keepDebugAlive,
+      debugChannel,
+      modelChannel
     ) {
       if (
         null !== ReactSharedInternalsServer.A &&
@@ -1006,7 +1005,7 @@
       var hints = new Set();
       this.type = type;
       this.status = OPENING;
-      this.flushScheduled = !1;
+      this.isFlushing = this.flushScheduled = !1;
       this.destination = this.fatalError = null;
       this.bundlerConfig = bundlerConfig;
       this.cache = new Map();
@@ -1030,8 +1029,10 @@
       this.onError = void 0 === onError ? defaultErrorHandler : onError;
       this.onAllReady = onAllReady;
       this.onFatalError = onFatalError;
+      this.modelChannel = void 0 === modelChannel ? null : modelChannel;
       this.pendingDebugChunks = 0;
       this.completedDebugChunks = [];
+      this.debugChannel = !0 === debugChannel;
       this.debugDestination = null;
       this.environmentName =
         void 0 === environmentName
@@ -1081,7 +1082,9 @@
       debugStartTime,
       environmentName,
       filterStackFrame,
-      keepDebugAlive
+      keepDebugAlive,
+      debugChannel,
+      modelChannel
     ) {
       resetOwnerStackLimit();
       return new RequestInstance(
@@ -1096,7 +1099,9 @@
         debugStartTime,
         environmentName,
         filterStackFrame,
-        keepDebugAlive
+        keepDebugAlive,
+        debugChannel,
+        modelChannel
       );
     }
     function createPrerenderRequest(
@@ -1110,7 +1115,9 @@
       debugStartTime,
       environmentName,
       filterStackFrame,
-      keepDebugAlive
+      keepDebugAlive,
+      debugChannel,
+      modelChannel
     ) {
       resetOwnerStackLimit();
       return new RequestInstance(
@@ -1125,7 +1132,9 @@
         debugStartTime,
         environmentName,
         filterStackFrame,
-        keepDebugAlive
+        keepDebugAlive,
+        debugChannel,
+        modelChannel
       );
     }
     function resolveRequest() {
@@ -1301,8 +1310,7 @@
         if (streamTask.status === PENDING$1)
           if (entry.done)
             (streamTask.status = COMPLETED),
-              (entry = streamTask.id.toString(16) + ":C\n"),
-              request.completedRegularChunks.push(stringToChunk(entry)),
+              request.completedRegularChunks.push([streamTask.id, "C", void 0]),
               request.abortableTasks.delete(streamTask),
               request.cacheController.signal.removeEventListener(
                 "abort",
@@ -1374,9 +1382,11 @@
           task.debugTask
         );
       request.pendingChunks++;
-      task =
-        streamTask.id.toString(16) + ":" + (isByteStream ? "r" : "R") + "\n";
-      request.completedRegularChunks.push(stringToChunk(task));
+      request.completedRegularChunks.push([
+        streamTask.id,
+        isByteStream ? "r" : "R",
+        null
+      ]);
       request.cacheController.signal.addEventListener("abort", abortStream);
       reader.read().then(progress, error);
       return serializeByValueID(streamTask.id);
@@ -1387,20 +1397,20 @@
           if (entry.done) {
             streamTask.status = COMPLETED;
             if (void 0 === entry.value)
-              var endStreamRow = streamTask.id.toString(16) + ":C\n";
+              var endStreamRow = [streamTask.id, "C", void 0];
             else
               try {
                 var chunkId = outlineModel(request, entry.value);
-                endStreamRow =
-                  streamTask.id.toString(16) +
-                  ":C" +
-                  stringify(serializeByValueID(chunkId)) +
-                  "\n";
+                endStreamRow = [
+                  streamTask.id,
+                  "C",
+                  serializeByValueID(chunkId)
+                ];
               } catch (x) {
                 error(x);
                 return;
               }
-            request.completedRegularChunks.push(stringToChunk(endStreamRow));
+            request.completedRegularChunks.push(endStreamRow);
             request.abortableTasks.delete(streamTask);
             request.cacheController.signal.removeEventListener(
               "abort",
@@ -1461,17 +1471,17 @@
       (task = iterable._debugInfo) &&
         forwardDebugInfo(request, streamTask, task);
       request.pendingChunks++;
-      isIterator =
-        streamTask.id.toString(16) + ":" + (isIterator ? "x" : "X") + "\n";
-      request.completedRegularChunks.push(stringToChunk(isIterator));
+      request.completedRegularChunks.push([
+        streamTask.id,
+        isIterator ? "x" : "X",
+        null
+      ]);
       request.cacheController.signal.addEventListener("abort", abortIterable);
       callIteratorInDEV(iterator, progress, error);
       return serializeByValueID(streamTask.id);
     }
     function emitHint(request, code, model) {
-      model = stringify(model);
-      code = stringToChunk(":H" + code + model + "\n");
-      request.completedHintChunks.push(code);
+      request.completedHintChunks.push([0, "H" + code, model]);
       enqueueFlush(request);
     }
     function readThenable(thenable) {
@@ -2093,11 +2103,6 @@
             ? "$-Infinity"
             : "$NaN";
     }
-    function encodeReferenceChunk(request, id, reference) {
-      request = stringify(reference);
-      id = id.toString(16) + ":" + request + "\n";
-      return stringToChunk(id);
-    }
     function serializeClientReference(
       request,
       parent,
@@ -2120,7 +2125,11 @@
         );
         request.pendingChunks++;
         var importId = request.nextChunkId++;
-        emitImportChunk(request, importId, clientReferenceMetadata, !1);
+        request.completedImportChunks.push([
+          importId,
+          "I",
+          clientReferenceMetadata
+        ]);
         writtenClientReferences.set(clientReferenceKey, importId);
         return parent[0] === REACT_ELEMENT_TYPE && "1" === parentPropertyName
           ? serializeLazyID(importId)
@@ -2157,7 +2166,11 @@
         );
         request.pendingDebugChunks++;
         var importId = request.nextChunkId++;
-        emitImportChunk(request, importId, clientReferenceMetadata, !0);
+        request.completedDebugChunks.push([
+          importId,
+          "I",
+          clientReferenceMetadata
+        ]);
         return parent[0] === REACT_ELEMENT_TYPE && "1" === parentPropertyName
           ? serializeLazyID(importId)
           : serializeByValueID(importId);
@@ -2737,7 +2750,11 @@
           );
         request.pendingChunks++;
         _writtenObjects = request.nextChunkId++;
-        emitSymbolChunk(request, _writtenObjects, elementReference);
+        request.completedImportChunks.push([
+          _writtenObjects,
+          "",
+          "$S" + elementReference
+        ]);
         task.set(value, _writtenObjects);
         return serializeByValueID(_writtenObjects);
       }
@@ -2757,12 +2774,18 @@
     function logRecoverableError(request, error, task) {
       var prevRequest = currentRequest;
       currentRequest = null;
+      var errorDigest;
       try {
         var onError = request.onError;
-        var errorDigest =
-          null !== task
-            ? callWithDebugContextInDEV(request, task, onError, error)
-            : onError(error);
+        null !== task
+          ? supportsRequestStorage ||
+            (errorDigest = callWithDebugContextInDEV(
+              request,
+              task,
+              onError,
+              error
+            ))
+          : supportsRequestStorage || (errorDigest = onError(error));
       } finally {
         currentRequest = prevRequest;
       }
@@ -2778,6 +2801,9 @@
       var onFatalError = request.onFatalError;
       onFatalError(error);
       cleanupTaintQueue(request);
+      onFatalError = request.modelChannel;
+      null !== onFatalError &&
+        ((request.modelChannel = null), onFatalError.error(error));
       null !== request.destination
         ? ((request.status = CLOSED),
           closeWithError(request.destination, error))
@@ -2861,48 +2887,34 @@
       };
       null !== causeReference && (digest.cause = causeReference);
       null !== errorsReference && (digest.errors = errorsReference);
-      id = id.toString(16) + ":E" + stringify(digest) + "\n";
-      id = stringToChunk(id);
+      id = [id, "E", digest];
       debug
         ? request.completedDebugChunks.push(id)
         : request.completedErrorChunks.push(id);
     }
-    function emitImportChunk(request, id, clientReferenceMetadata, debug) {
-      clientReferenceMetadata = stringify(clientReferenceMetadata);
-      id = id.toString(16) + ":I" + clientReferenceMetadata + "\n";
-      id = stringToChunk(id);
-      debug
-        ? request.completedDebugChunks.push(id)
-        : request.completedImportChunks.push(id);
-    }
-    function emitSymbolChunk(request, id, name) {
-      id = encodeReferenceChunk(request, id, "$S" + name);
-      request.completedImportChunks.push(id);
-    }
-    function emitModelChunk(request, id, json) {
-      id = id.toString(16) + ":" + json + "\n";
-      id = stringToChunk(id);
-      request.completedRegularChunks.push(id);
-    }
     function emitDebugHaltChunk(request, id) {
-      id = id.toString(16) + ":\n";
-      id = stringToChunk(id);
-      request.completedDebugChunks.push(id);
+      request.completedDebugChunks.push([id, "", void 0]);
     }
     function emitDebugChunk(request, id, debugInfo) {
-      var json = serializeDebugModel(request, 500, debugInfo);
-      null !== request.debugDestination
-        ? '"' === json[0] && "$" === json[1]
-          ? ((id = id.toString(16) + ":D" + json + "\n"),
-            request.completedRegularChunks.push(stringToChunk(id)))
-          : ((debugInfo = request.nextChunkId++),
-            (json = debugInfo.toString(16) + ":" + json + "\n"),
-            request.pendingDebugChunks++,
-            request.completedDebugChunks.push(stringToChunk(json)),
-            (id = id.toString(16) + ':D"$' + debugInfo.toString(16) + '"\n'),
-            request.completedRegularChunks.push(stringToChunk(id)))
-        : ((id = id.toString(16) + ":D" + json + "\n"),
-          request.completedRegularChunks.push(stringToChunk(id)));
+      debugInfo = serializeDebugModel(request, 500, debugInfo);
+      if (null !== request.debugDestination)
+        if ('"' === debugInfo[0] && "$" === debugInfo[1])
+          request.completedRegularChunks.push([id, "D", debugInfo]);
+        else {
+          var outlinedId = request.nextChunkId++;
+          request.pendingDebugChunks++;
+          request.completedDebugChunks.push([
+            outlinedId,
+            PRESERIALIZED_MODEL_ROW,
+            debugInfo
+          ]);
+          request.completedRegularChunks.push([
+            id,
+            "D",
+            '"$' + outlinedId.toString(16) + '"'
+          ]);
+        }
+      else request.completedRegularChunks.push([id, "D", debugInfo]);
     }
     function outlineComponentInfo(request, componentInfo) {
       var existingRef = request.writtenDebugObjects.get(componentInfo);
@@ -2955,20 +2967,10 @@
         typedArray.byteLength
       );
       typedArray = 2048 < typedArray.byteLength ? tainted.slice() : tainted;
-      tainted = typedArray.byteLength;
-      id = id.toString(16) + ":" + tag + tainted.toString(16) + ",";
-      id = stringToChunk(id);
+      id = [id, tag, typedArray];
       debug
-        ? request.completedDebugChunks.push(
-            NEXT_TWO_CHUNKS_ARE_ATOMIC,
-            id,
-            typedArray
-          )
-        : request.completedRegularChunks.push(
-            NEXT_TWO_CHUNKS_ARE_ATOMIC,
-            id,
-            typedArray
-          );
+        ? request.completedDebugChunks.push(id)
+        : request.completedRegularChunks.push(id);
     }
     function emitTextChunk(request, id, text, debug) {
       if (null === byteLengthOfChunk)
@@ -2976,21 +2978,10 @@
           "Existence of byteLengthOfChunk should have already been checked. This is a bug in React."
         );
       debug ? request.pendingDebugChunks++ : request.pendingChunks++;
-      text = stringToChunk(text);
-      var binaryLength = text.byteLength;
-      id = id.toString(16) + ":T" + binaryLength.toString(16) + ",";
-      id = stringToChunk(id);
+      id = [id, "T", text];
       debug
-        ? request.completedDebugChunks.push(
-            NEXT_TWO_CHUNKS_ARE_ATOMIC,
-            id,
-            text
-          )
-        : request.completedRegularChunks.push(
-            NEXT_TWO_CHUNKS_ARE_ATOMIC,
-            id,
-            text
-          );
+        ? request.completedDebugChunks.push(id)
+        : request.completedRegularChunks.push(id);
     }
     function renderDebugModel(
       request,
@@ -3325,7 +3316,7 @@
         if (void 0 !== ref) return ref;
         ref = Function.prototype.toString.call(value);
         key = value.name;
-        key =
+        ref =
           "$E" +
           ("string" === typeof key
             ? "Object.defineProperty(" +
@@ -3335,10 +3326,9 @@
               "})"
             : "(" + ref + ")");
         request.pendingDebugChunks++;
-        ref = request.nextChunkId++;
-        key = encodeReferenceChunk(request, ref, key);
-        request.completedDebugChunks.push(key);
-        request = serializeByValueID(ref);
+        key = request.nextChunkId++;
+        request.completedDebugChunks.push([key, "", ref]);
+        request = serializeByValueID(key);
         counter.set(value, request);
         return request;
       }
@@ -3348,7 +3338,7 @@
         value = value.description;
         request.pendingChunks++;
         counter = request.nextChunkId++;
-        emitSymbolChunk(request, counter, value);
+        request.completedImportChunks.push([counter, "", "$S" + value]);
         return serializeByValueID(counter);
       }
       return "bigint" === typeof value
@@ -3419,9 +3409,7 @@
       } finally {
         debugModelRoot = prevModelRoot;
       }
-      id = id.toString(16) + ":" + json + "\n";
-      id = stringToChunk(id);
-      request.completedDebugChunks.push(id);
+      request.completedDebugChunks.push([id, PRESERIALIZED_MODEL_ROW, json]);
     }
     function outlineDebugModel(request, counter, model) {
       var id = request.nextChunkId++;
@@ -3431,8 +3419,7 @@
     }
     function emitTimeOriginChunk(request, timeOrigin) {
       request.pendingDebugChunks++;
-      timeOrigin = stringToChunk(":N" + timeOrigin + "\n");
-      request.completedDebugChunks.push(timeOrigin);
+      request.completedDebugChunks.push([0, "N", timeOrigin]);
     }
     function forwardDebugInfo(request$jscomp$1, task, debugInfo) {
       for (var id = task.id, i = 0; i < debugInfo.length; i++) {
@@ -3482,9 +3469,11 @@
                 objectLimit,
                 debugIOInfo
               );
-              id$jscomp$1 = id$jscomp$1.toString(16) + ":J" + env + "\n";
-              id$jscomp$1 = stringToChunk(id$jscomp$1);
-              request$jscomp$0.completedDebugChunks.push(id$jscomp$1);
+              request$jscomp$0.completedDebugChunks.push([
+                id$jscomp$1,
+                "J",
+                env
+              ]);
               request.writtenDebugObjects.set(
                 ioInfo$jscomp$0,
                 serializeByValueID(id$jscomp$0)
@@ -3531,16 +3520,21 @@
     }
     function emitTimingChunk(request, id, timestamp) {
       request.pendingChunks++;
-      var json = '{"time":' + (timestamp - request.timeOrigin) + "}";
-      null !== request.debugDestination
-        ? ((timestamp = request.nextChunkId++),
-          (json = timestamp.toString(16) + ":" + json + "\n"),
-          request.pendingDebugChunks++,
-          request.completedDebugChunks.push(stringToChunk(json)),
-          (id = id.toString(16) + ':D"$' + timestamp.toString(16) + '"\n'),
-          request.completedRegularChunks.push(stringToChunk(id)))
-        : ((id = id.toString(16) + ":D" + json + "\n"),
-          request.completedRegularChunks.push(stringToChunk(id)));
+      timestamp = '{"time":' + (timestamp - request.timeOrigin) + "}";
+      if (null !== request.debugDestination) {
+        var outlinedId = request.nextChunkId++;
+        request.pendingDebugChunks++;
+        request.completedDebugChunks.push([
+          outlinedId,
+          PRESERIALIZED_MODEL_ROW,
+          timestamp
+        ]);
+        request.completedRegularChunks.push([
+          id,
+          "D",
+          '"$' + outlinedId.toString(16) + '"'
+        ]);
+      } else request.completedRegularChunks.push([id, "D", timestamp]);
     }
     function markOperationEndTime(request, task, timestamp) {
       (request.status === ABORTING && timestamp > request.abortTime) ||
@@ -3600,8 +3594,11 @@
                                       "",
                                       value
                                     )),
-                                    (value = stringify(value)),
-                                    emitModelChunk(request, task.id, value));
+                                    request.completedRegularChunks.push([
+                                      task.id,
+                                      "",
+                                      value
+                                    ]));
     }
     function erroredTask(request, task, error) {
       task.timed && markOperationEndTime(request, task, performance.now());
@@ -3635,16 +3632,13 @@
             (request.pendingChunks++,
             emitDebugChunk(request, task.id, { env: currentEnv }));
           task.timed && markOperationEndTime(request, task, performance.now());
-          if ("object" === typeof resolvedModel && null !== resolvedModel)
-            request.writtenObjects.set(
-              resolvedModel,
-              serializeByValueID(task.id)
-            ),
-              emitChunk(request, task, resolvedModel);
-          else {
-            var json = stringify(resolvedModel);
-            emitModelChunk(request, task.id, json);
-          }
+          "object" === typeof resolvedModel && null !== resolvedModel
+            ? (request.writtenObjects.set(
+                resolvedModel,
+                serializeByValueID(task.id)
+              ),
+              emitChunk(request, task, resolvedModel))
+            : request.completedRegularChunks.push([task.id, "", resolvedModel]);
           task.status = COMPLETED;
           request.abortableTasks.delete(task);
           callOnAllReadyIfReady(request);
@@ -3721,8 +3715,7 @@
         (forwardDebugInfoFromAbortedTask(request, task),
         task.timed && markOperationEndTime(request, task, request.abortTime),
         (errorId = serializeByValueID(errorId)),
-        (task = encodeReferenceChunk(request, task.id, errorId)),
-        request.completedErrorChunks.push(task));
+        request.completedErrorChunks.push([task.id, "", errorId]));
     }
     function haltTask(task) {
       task.status === PENDING$1 && (task.status = ABORTED);
@@ -3732,172 +3725,347 @@
         (forwardDebugInfoFromAbortedTask(request, task),
         request.pendingChunks--);
     }
-    function flushCompletedChunks(request) {
-      if (null !== request.debugDestination) {
-        var debugDestination = request.debugDestination;
-        currentView = new Uint8Array(2048);
-        writtenBytes = 0;
-        try {
-          for (
-            var debugChunks = request.completedDebugChunks, i = 0;
-            i < debugChunks.length;
-            i++
-          ) {
-            var item = debugChunks[i];
-            if (item === NEXT_TWO_CHUNKS_ARE_ATOMIC) {
-              if (i + 2 >= debugChunks.length)
-                throw Error(
-                  "A chunk pair is incomplete. This is a bug in React."
-                );
-              request.pendingDebugChunks -= 2;
-              writeChunk(debugDestination, debugChunks[i + 1]);
-              writeChunk(debugDestination, debugChunks[i + 2]);
-              i += 2;
-            } else
-              request.pendingDebugChunks--, writeChunk(debugDestination, item);
-          }
-          debugChunks.splice(0, i);
-        } finally {
-          completeWriting(debugDestination);
-        }
-      }
-      debugDestination = request.destination;
-      if (null !== debugDestination) {
-        currentView = new Uint8Array(2048);
-        writtenBytes = 0;
-        try {
-          var importsChunks = request.completedImportChunks;
-          for (
-            debugChunks = 0;
-            debugChunks < importsChunks.length;
-            debugChunks++
-          )
-            if (
-              (request.pendingChunks--,
-              !writeChunkAndReturn(
-                debugDestination,
-                importsChunks[debugChunks]
-              ))
-            ) {
-              request.destination = null;
-              debugChunks++;
-              break;
-            }
-          importsChunks.splice(0, debugChunks);
-          var hintChunks = request.completedHintChunks;
-          for (debugChunks = 0; debugChunks < hintChunks.length; debugChunks++)
-            if (
-              !writeChunkAndReturn(debugDestination, hintChunks[debugChunks])
-            ) {
-              request.destination = null;
-              debugChunks++;
-              break;
-            }
-          hintChunks.splice(0, debugChunks);
-          if (null === request.debugDestination) {
-            var _debugChunks = request.completedDebugChunks;
-            for (
-              debugChunks = 0;
-              debugChunks < _debugChunks.length;
-              debugChunks++
-            ) {
-              var _item = _debugChunks[debugChunks];
-              importsChunks = void 0;
-              if (_item === NEXT_TWO_CHUNKS_ARE_ATOMIC) {
-                if (debugChunks + 2 >= _debugChunks.length)
-                  throw Error(
-                    "A chunk pair is incomplete. This is a bug in React."
-                  );
-                request.pendingDebugChunks -= 2;
-                writeChunk(debugDestination, _debugChunks[debugChunks + 1]);
-                importsChunks = writeChunkAndReturn(
-                  debugDestination,
-                  _debugChunks[debugChunks + 2]
-                );
-                debugChunks += 2;
-              } else
-                request.pendingDebugChunks--,
-                  (importsChunks = writeChunkAndReturn(
-                    debugDestination,
-                    _item
-                  ));
-              if (!importsChunks) {
-                request.destination = null;
-                debugChunks++;
+    function serializeRows(request, queue, deliver) {
+      for (var serialized = null, i = 0; i < queue.length; i++) {
+        var entry = queue[i];
+        if (isArrayImpl(entry)) {
+          null === serialized && (serialized = queue.slice(0, i));
+          var target = serialized,
+            id = entry[0],
+            tag = entry[1],
+            payload = entry[2];
+          switch (tag) {
+            case "":
+              if (void 0 === payload) {
+                target.push(stringToChunk(id.toString(16) + ":\n"));
                 break;
               }
-            }
-            _debugChunks.splice(0, debugChunks);
-          }
-          var regularChunks = request.completedRegularChunks;
-          for (
-            debugChunks = 0;
-            debugChunks < regularChunks.length;
-            debugChunks++
-          ) {
-            var _item2 = regularChunks[debugChunks];
-            _debugChunks = void 0;
-            if (_item2 === NEXT_TWO_CHUNKS_ARE_ATOMIC) {
-              if (debugChunks + 2 >= regularChunks.length)
-                throw Error(
-                  "A chunk pair is incomplete. This is a bug in React."
-                );
-              request.pendingChunks -= 2;
-              writeChunk(debugDestination, regularChunks[debugChunks + 1]);
-              _debugChunks = writeChunkAndReturn(
-                debugDestination,
-                regularChunks[debugChunks + 2]
+              payload = stringify(payload);
+              target.push(
+                stringToChunk(id.toString(16) + ":" + payload + "\n")
               );
-              debugChunks += 2;
-            } else
-              request.pendingChunks--,
-                (_debugChunks = writeChunkAndReturn(debugDestination, _item2));
-            if (!_debugChunks) {
-              request.destination = null;
-              debugChunks++;
               break;
+            case PRESERIALIZED_MODEL_ROW:
+              target.push(
+                stringToChunk(id.toString(16) + ":" + payload + "\n")
+              );
+              break;
+            case "T":
+              payload = stringToChunk(payload);
+              tag = payload.byteLength;
+              id = stringToChunk(
+                id.toString(16) + ":T" + tag.toString(16) + ","
+              );
+              target.push(NEXT_TWO_CHUNKS_ARE_ATOMIC, id, payload);
+              break;
+            case "E":
+              payload = stringify(payload);
+              target.push(
+                stringToChunk(id.toString(16) + ":E" + payload + "\n")
+              );
+              break;
+            case "I":
+              payload = stringify(payload);
+              target.push(
+                stringToChunk(id.toString(16) + ":I" + payload + "\n")
+              );
+              break;
+            case "C":
+              target.push(
+                stringToChunk(
+                  id.toString(16) +
+                    ":C" +
+                    (void 0 === payload ? "" : stringify(payload)) +
+                    "\n"
+                )
+              );
+              break;
+            case "R":
+            case "r":
+            case "X":
+            case "x":
+              target.push(stringToChunk(id.toString(16) + ":" + tag + "\n"));
+              break;
+            case "D":
+            case "W":
+            case "J":
+              id = "W" === tag ? ":W" : id.toString(16) + ":" + tag;
+              target.push(stringToChunk(id + payload + "\n"));
+              break;
+            case "N":
+              target.push(stringToChunk(":N" + payload + "\n"));
+              break;
+            default:
+              if (72 === tag.charCodeAt(0))
+                (id = stringify(payload)),
+                  target.push(stringToChunk(":H" + tag.slice(1) + id + "\n"));
+              else {
+                var _binaryLength = payload.byteLength;
+                id = stringToChunk(
+                  id.toString(16) + ":" + tag + _binaryLength.toString(16) + ","
+                );
+                target.push(NEXT_TWO_CHUNKS_ARE_ATOMIC, id, payload);
+              }
+          }
+          if (deliver && ((target = request.modelChannel), null !== target))
+            try {
+              id = target;
+              var tag$jscomp$0 = entry[1],
+                payload$jscomp$0 = entry[2];
+              switch (tag$jscomp$0) {
+                case "":
+                case "C":
+                  "string" === typeof payload$jscomp$0 &&
+                    (payload$jscomp$0 = stringify(payload$jscomp$0));
+                  break;
+                case "I":
+                  payload$jscomp$0 = stringify(payload$jscomp$0);
+                  break;
+                case PRESERIALIZED_MODEL_ROW:
+                case "T":
+                case "E":
+                case "R":
+                case "r":
+                case "X":
+                case "x":
+                case "D":
+                case "W":
+                case "J":
+                case "N":
+                  break;
+                default:
+                  72 === tag$jscomp$0.charCodeAt(0)
+                    ? "string" === typeof payload$jscomp$0 &&
+                      (payload$jscomp$0 = stringify(payload$jscomp$0))
+                    : (payload$jscomp$0 = payload$jscomp$0.slice());
+              }
+              id.push(entry[0], tag$jscomp$0, payload$jscomp$0);
+            } catch (x) {
+              request.modelChannel = null;
+              try {
+                target.error(x);
+              } catch (_) {}
+            }
+        } else null !== serialized && serialized.push(entry);
+      }
+      return null === serialized ? queue : serialized;
+    }
+    function flushCompletedChunks(request) {
+      if (request.isFlushing) enqueueFlush(request);
+      else {
+        request.isFlushing = !0;
+        try {
+          request.completedImportChunks = serializeRows(
+            request,
+            request.completedImportChunks,
+            !0
+          );
+          request.completedHintChunks = serializeRows(
+            request,
+            request.completedHintChunks,
+            !0
+          );
+          request.completedDebugChunks = serializeRows(
+            request,
+            request.completedDebugChunks,
+            !request.debugChannel
+          );
+          request.completedRegularChunks = serializeRows(
+            request,
+            request.completedRegularChunks,
+            !0
+          );
+          request.completedErrorChunks = serializeRows(
+            request,
+            request.completedErrorChunks,
+            !0
+          );
+          if (null !== request.debugDestination) {
+            var debugDestination = request.debugDestination;
+            currentView = new Uint8Array(2048);
+            writtenBytes = 0;
+            try {
+              for (
+                var debugChunks = request.completedDebugChunks, i = 0;
+                i < debugChunks.length;
+                i++
+              ) {
+                var item = debugChunks[i];
+                if (item === NEXT_TWO_CHUNKS_ARE_ATOMIC) {
+                  if (i + 2 >= debugChunks.length)
+                    throw Error(
+                      "A chunk pair is incomplete. This is a bug in React."
+                    );
+                  request.pendingDebugChunks -= 2;
+                  writeChunk(debugDestination, debugChunks[i + 1]);
+                  writeChunk(debugDestination, debugChunks[i + 2]);
+                  i += 2;
+                } else
+                  request.pendingDebugChunks--,
+                    writeChunk(debugDestination, item);
+              }
+              debugChunks.splice(0, i);
+            } finally {
+              completeWriting(debugDestination);
             }
           }
-          regularChunks.splice(0, debugChunks);
-          var errorChunks = request.completedErrorChunks;
-          for (debugChunks = 0; debugChunks < errorChunks.length; debugChunks++)
-            if (
-              (request.pendingChunks--,
-              !writeChunkAndReturn(debugDestination, errorChunks[debugChunks]))
-            ) {
-              request.destination = null;
-              debugChunks++;
-              break;
+          var destination = request.destination;
+          if (null !== destination) {
+            currentView = new Uint8Array(2048);
+            writtenBytes = 0;
+            try {
+              var importsChunks = request.completedImportChunks;
+              for (
+                debugDestination = 0;
+                debugDestination < importsChunks.length;
+                debugDestination++
+              )
+                if (
+                  (request.pendingChunks--,
+                  !writeChunkAndReturn(
+                    destination,
+                    importsChunks[debugDestination]
+                  ))
+                ) {
+                  request.destination = null;
+                  debugDestination++;
+                  break;
+                }
+              importsChunks.splice(0, debugDestination);
+              var hintChunks = request.completedHintChunks;
+              for (
+                debugDestination = 0;
+                debugDestination < hintChunks.length;
+                debugDestination++
+              )
+                if (
+                  !writeChunkAndReturn(
+                    destination,
+                    hintChunks[debugDestination]
+                  )
+                ) {
+                  request.destination = null;
+                  debugDestination++;
+                  break;
+                }
+              hintChunks.splice(0, debugDestination);
+              if (!request.debugChannel) {
+                var _debugChunks = request.completedDebugChunks;
+                for (
+                  debugDestination = 0;
+                  debugDestination < _debugChunks.length;
+                  debugDestination++
+                ) {
+                  var _item = _debugChunks[debugDestination];
+                  importsChunks = void 0;
+                  if (_item === NEXT_TWO_CHUNKS_ARE_ATOMIC) {
+                    if (debugDestination + 2 >= _debugChunks.length)
+                      throw Error(
+                        "A chunk pair is incomplete. This is a bug in React."
+                      );
+                    request.pendingDebugChunks -= 2;
+                    writeChunk(destination, _debugChunks[debugDestination + 1]);
+                    importsChunks = writeChunkAndReturn(
+                      destination,
+                      _debugChunks[debugDestination + 2]
+                    );
+                    debugDestination += 2;
+                  } else
+                    request.pendingDebugChunks--,
+                      (importsChunks = writeChunkAndReturn(destination, _item));
+                  if (!importsChunks) {
+                    request.destination = null;
+                    debugDestination++;
+                    break;
+                  }
+                }
+                _debugChunks.splice(0, debugDestination);
+              }
+              var regularChunks = request.completedRegularChunks;
+              for (
+                debugDestination = 0;
+                debugDestination < regularChunks.length;
+                debugDestination++
+              ) {
+                var _item2 = regularChunks[debugDestination];
+                _debugChunks = void 0;
+                if (_item2 === NEXT_TWO_CHUNKS_ARE_ATOMIC) {
+                  if (debugDestination + 2 >= regularChunks.length)
+                    throw Error(
+                      "A chunk pair is incomplete. This is a bug in React."
+                    );
+                  request.pendingChunks -= 2;
+                  writeChunk(destination, regularChunks[debugDestination + 1]);
+                  _debugChunks = writeChunkAndReturn(
+                    destination,
+                    regularChunks[debugDestination + 2]
+                  );
+                  debugDestination += 2;
+                } else
+                  request.pendingChunks--,
+                    (_debugChunks = writeChunkAndReturn(destination, _item2));
+                if (!_debugChunks) {
+                  request.destination = null;
+                  debugDestination++;
+                  break;
+                }
+              }
+              regularChunks.splice(0, debugDestination);
+              var errorChunks = request.completedErrorChunks;
+              for (
+                debugDestination = 0;
+                debugDestination < errorChunks.length;
+                debugDestination++
+              )
+                if (
+                  (request.pendingChunks--,
+                  !writeChunkAndReturn(
+                    destination,
+                    errorChunks[debugDestination]
+                  ))
+                ) {
+                  request.destination = null;
+                  debugDestination++;
+                  break;
+                }
+              errorChunks.splice(0, debugDestination);
+            } finally {
+              (request.flushScheduled = !1), completeWriting(destination);
             }
-          errorChunks.splice(0, debugChunks);
+          }
+          if (0 === request.pendingChunks) {
+            var completedModelChannel = request.modelChannel;
+            null !== completedModelChannel &&
+              ((request.modelChannel = null), completedModelChannel.close());
+            var _debugDestination = request.debugDestination;
+            0 === request.pendingDebugChunks
+              ? (null !== _debugDestination &&
+                  (_debugDestination.close(),
+                  (request.debugDestination = null)),
+                cleanupTaintQueue(request),
+                request.status < ABORTING &&
+                  request.cacheController.abort(
+                    Error(
+                      "This render completed successfully. All cacheSignals are now aborted to allow clean up of any unused resources."
+                    )
+                  ),
+                null !== request.destination &&
+                  ((request.status = CLOSED),
+                  request.destination.close(),
+                  (request.destination = null)),
+                null !== request.debugDestination &&
+                  (request.debugDestination.close(),
+                  (request.debugDestination = null)))
+              : null !== _debugDestination &&
+                null !== request.destination &&
+                ((request.status = CLOSED),
+                request.destination.close(),
+                (request.destination = null));
+          }
         } finally {
-          (request.flushScheduled = !1), completeWriting(debugDestination);
+          request.isFlushing = !1;
         }
       }
-      0 === request.pendingChunks &&
-        ((regularChunks = request.debugDestination),
-        0 === request.pendingDebugChunks
-          ? (null !== regularChunks &&
-              (regularChunks.close(), (request.debugDestination = null)),
-            cleanupTaintQueue(request),
-            request.status < ABORTING &&
-              request.cacheController.abort(
-                Error(
-                  "This render completed successfully. All cacheSignals are now aborted to allow clean up of any unused resources."
-                )
-              ),
-            null !== request.destination &&
-              ((request.status = CLOSED),
-              request.destination.close(),
-              (request.destination = null)),
-            null !== request.debugDestination &&
-              (request.debugDestination.close(),
-              (request.debugDestination = null)))
-          : null !== regularChunks &&
-            null !== request.destination &&
-            ((request.status = CLOSED),
-            request.destination.close(),
-            (request.destination = null)));
     }
     function startWork(request) {
       request.flushScheduled = null !== request.destination;
@@ -3911,11 +4079,18 @@
     function enqueueFlush(request) {
       !1 !== request.flushScheduled ||
         0 !== request.pingedTasks.length ||
-        (null === request.destination && null === request.debugDestination) ||
+        (null === request.destination &&
+          null === request.modelChannel &&
+          null === request.debugDestination) ||
         ((request.flushScheduled = !0),
         scheduleWork(function () {
           request.flushScheduled = !1;
-          flushCompletedChunks(request);
+          try {
+            flushCompletedChunks(request);
+          } catch (error) {
+            logRecoverableError(request, error, null),
+              fatalError(request, error);
+          }
         }));
     }
     function callOnAllReadyIfReady(request) {
@@ -5530,6 +5705,7 @@
       frameRegExp =
         /^ {3} at (?:(.+) \((?:(.+):(\d+):(\d+)|<anonymous>)\)|(?:async )?(.+):(\d+):(\d+)|<anonymous>)$/,
       stackTraceCache = new WeakMap(),
+      supportsRequestStorage = !1,
       TEMPORARY_REFERENCE_TAG = Symbol.for("react.temporary.reference"),
       proxyHandlers = {
         get: function (target, name, receiver) {
@@ -5767,6 +5943,7 @@
       CLOSED = 14,
       PRERENDER = 21,
       NEXT_TWO_CHUNKS_ARE_ATOMIC = Symbol(),
+      PRESERIALIZED_MODEL_ROW = "P",
       TaintRegistryObjects = ReactSharedInternalsServer.TaintRegistryObjects,
       TaintRegistryValues = ReactSharedInternalsServer.TaintRegistryValues,
       TaintRegistryByteLengths =

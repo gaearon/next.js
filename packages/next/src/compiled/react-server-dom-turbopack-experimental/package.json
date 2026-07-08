@@ -46,9 +46,5 @@
   "dependencies": {
     "acorn-loose": "^8.3.0",
     "neo-async": "^2.6.1"
-  },
-  "peerDependencies": {
-    "react": "0.0.0-experimental-3508aee6-20260702",
-    "react-dom": "0.0.0-experimental-3508aee6-20260702"
   }
 }

@@ -138,7 +138,11 @@ import {
   getPostponedFromState,
 } from './postponed-state'
 import { isDynamicServerError } from '../../client/components/hooks-server-context'
-import { getFlightStream } from './use-flight-response'
+import {
+  getFlightStream,
+  getFlightResponseFromModelChannel,
+} from './use-flight-response'
+import type { ModelChannel } from 'react-server-dom-webpack/client'
 import {
   StaticGenBailoutError,
   isStaticGenBailoutError,
@@ -2351,6 +2355,7 @@ async function getErrorRSCPayload(
 // This component must run in an SSR context. It will render the RSC root component
 function App<T>({
   reactServerStream,
+  reactServerChannel,
   reactDebugStream,
   debugEndTime,
   preinitScripts,
@@ -2359,7 +2364,9 @@ function App<T>({
   images,
 }: {
   /* eslint-disable @next/internal/no-ambiguous-jsx -- React Client */
-  reactServerStream: Readable | BinaryStreamOf<T>
+  // Exactly one of reactServerStream and reactServerChannel must be provided.
+  reactServerStream?: Readable | BinaryStreamOf<T>
+  reactServerChannel?: ModelChannel
   reactDebugStream: AnyStream | undefined
   debugEndTime: number | undefined
   preinitScripts: () => void
@@ -2371,12 +2378,19 @@ function App<T>({
 }): JSX.Element {
   preinitScripts()
   const response = ReactClient.use(
-    getFlightStream<InitialRSCPayload>(
-      reactServerStream,
-      reactDebugStream,
-      debugEndTime,
-      nonce
-    )
+    reactServerChannel !== undefined
+      ? getFlightResponseFromModelChannel<InitialRSCPayload>(
+          reactServerChannel,
+          reactDebugStream,
+          debugEndTime,
+          nonce
+        )
+      : getFlightStream<InitialRSCPayload>(
+          reactServerStream!,
+          reactDebugStream,
+          debugEndTime,
+          nonce
+        )
   )
 
   const initialState = createInitialRouterState({
@@ -3400,6 +3414,10 @@ async function renderToStream(
 
     let reactServerResult: null | ReactServerResult = null
     let reactDebugStream: AnyStream | undefined
+    // When set, the SSR pass consumes Flight rows in object form over this
+    // channel instead of parsing a teed copy of the RSC byte stream. The byte
+    // stream then only feeds hydration data inlining.
+    let reactServerChannel: ModelChannel | undefined
 
     const setHeader = res.setHeader.bind(res)
     const appendHeader = res.appendHeader.bind(res)
@@ -3696,6 +3714,25 @@ async function renderToStream(
             )
           }
 
+          // Deliver Flight rows to the SSR pass over a ModelChannel unless
+          // this is a data-only resume of a postponed prerender, which never
+          // runs an SSR pass that could consume the channel. Setting
+          // NEXT_FLIGHT_MODEL_CHANNEL=0 restores the byte-stream tee for SSR
+          // (used as the baseline when benchmarking this prototype).
+          if (
+            process.env.NEXT_FLIGHT_MODEL_CHANNEL !== '0' &&
+            !(
+              typeof renderOpts.postponed === 'string' &&
+              postponedState?.type === DynamicState.DATA
+            )
+          ) {
+            // react-server-dom-webpack/client must not be hoisted for require cache clearing to work correctly
+            const { createModelChannel } =
+              // eslint-disable-next-line import/no-extraneous-dependencies
+              require('react-server-dom-webpack/client') as typeof import('react-server-dom-webpack/client')
+            reactServerChannel = createModelChannel()
+          }
+
           reactServerResult = new ReactServerResult(
             workUnitAsyncStorage.run(
               requestStore,
@@ -3707,6 +3744,7 @@ async function renderToStream(
                 filterStackFrame,
                 onError: serverComponentsErrorHandler,
                 debugChannel: debugChannel?.serverSide,
+                modelChannel: reactServerChannel,
               }
             )
           )
@@ -3788,7 +3826,10 @@ async function renderToStream(
 
             const resumeAppElement = (
               <App
-                reactServerStream={reactServerResult.tee()}
+                reactServerStream={
+                  reactServerChannel ? undefined : reactServerResult.tee()
+                }
+                reactServerChannel={reactServerChannel}
                 reactDebugStream={reactDebugStream}
                 debugEndTime={undefined}
                 preinitScripts={preinitScripts}
@@ -3849,7 +3890,10 @@ async function renderToStream(
 
         const appElement = (
           <App
-            reactServerStream={reactServerResult.tee()}
+            reactServerStream={
+              reactServerChannel ? undefined : reactServerResult.tee()
+            }
+            reactServerChannel={reactServerChannel}
             // TODO: Pass Node.js debugStream
             reactDebugStream={reactDebugStream}
             debugEndTime={undefined}
@@ -3932,7 +3976,10 @@ async function renderToStream(
 
             const resumeAppElement = (
               <App
-                reactServerStream={reactServerResult.tee()}
+                reactServerStream={
+                  reactServerChannel ? undefined : reactServerResult.tee()
+                }
+                reactServerChannel={reactServerChannel}
                 reactDebugStream={reactDebugStream}
                 debugEndTime={undefined}
                 preinitScripts={preinitScripts}
@@ -3993,7 +4040,10 @@ async function renderToStream(
 
         const appElement = (
           <App
-            reactServerStream={reactServerResult.tee()}
+            reactServerStream={
+              reactServerChannel ? undefined : reactServerResult.tee()
+            }
+            reactServerChannel={reactServerChannel}
             reactDebugStream={reactDebugStream}
             debugEndTime={undefined}
             preinitScripts={preinitScripts}
