@@ -4281,44 +4281,46 @@
               }
           }
           if (deliver && ((target = request.modelChannel), null !== target))
-            try {
-              id = target;
-              var tag$jscomp$0 = entry[1],
-                payload$jscomp$0 = entry[2];
-              switch (tag$jscomp$0) {
-                case "":
-                case "C":
-                  "string" === typeof payload$jscomp$0 &&
-                    (payload$jscomp$0 = stringify(payload$jscomp$0));
-                  break;
-                case "I":
-                  payload$jscomp$0 = stringify(payload$jscomp$0);
-                  break;
-                case PRESERIALIZED_MODEL_ROW:
-                case "T":
-                case "E":
-                case "R":
-                case "r":
-                case "X":
-                case "x":
-                case "D":
-                case "W":
-                case "J":
-                case "N":
-                  break;
-                default:
-                  72 === tag$jscomp$0.charCodeAt(0)
-                    ? "string" === typeof payload$jscomp$0 &&
-                      (payload$jscomp$0 = stringify(payload$jscomp$0))
-                    : (payload$jscomp$0 = payload$jscomp$0.slice());
-              }
-              id.push(entry[0], tag$jscomp$0, payload$jscomp$0);
-            } catch (x) {
-              request.modelChannel = null;
+            if (target.canceled) request.modelChannel = null;
+            else
               try {
-                target.error(x);
-              } catch (_) {}
-            }
+                id = target;
+                var tag$jscomp$0 = entry[1],
+                  payload$jscomp$0 = entry[2];
+                switch (tag$jscomp$0) {
+                  case "":
+                  case "C":
+                    "string" === typeof payload$jscomp$0 &&
+                      (payload$jscomp$0 = stringify(payload$jscomp$0));
+                    break;
+                  case "I":
+                    payload$jscomp$0 = stringify(payload$jscomp$0);
+                    break;
+                  case PRESERIALIZED_MODEL_ROW:
+                  case "T":
+                  case "E":
+                  case "R":
+                  case "r":
+                  case "X":
+                  case "x":
+                  case "D":
+                  case "W":
+                  case "J":
+                  case "N":
+                    break;
+                  default:
+                    72 === tag$jscomp$0.charCodeAt(0)
+                      ? "string" === typeof payload$jscomp$0 &&
+                        (payload$jscomp$0 = stringify(payload$jscomp$0))
+                      : (payload$jscomp$0 = payload$jscomp$0.slice());
+                }
+                id.push(entry[0], tag$jscomp$0, payload$jscomp$0);
+              } catch (x) {
+                request.modelChannel = null;
+                try {
+                  target.error(x);
+                } catch (_) {}
+              }
         } else null !== serialized && serialized.push(entry);
       }
       return null === serialized ? queue : serialized;

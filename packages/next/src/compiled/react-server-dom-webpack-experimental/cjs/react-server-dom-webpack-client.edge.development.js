@@ -4843,6 +4843,8 @@
       }
     }
     function connectModelChannel(channel, sink) {
+      if (channel.canceled)
+        throw Error("This ModelChannel has already been canceled.");
       if (null !== channel._sink)
         throw Error("A ModelChannel can only have a single consumer.");
       channel._sink = sink;
@@ -5538,23 +5540,35 @@
         _buffer: null,
         _status: 0,
         _errorReason: null,
+        canceled: !1,
         push: function (id, tag, payload) {
-          var sink = channel._sink;
-          null !== sink
-            ? sink.row(id, tag, payload)
-            : ((sink = channel._buffer),
-              null === sink && (sink = channel._buffer = []),
-              sink.push(id, tag, payload));
+          if (!channel.canceled) {
+            var sink = channel._sink;
+            null !== sink
+              ? sink.row(id, tag, payload)
+              : ((sink = channel._buffer),
+                null === sink && (sink = channel._buffer = []),
+                sink.push(id, tag, payload));
+          }
         },
         close: function () {
-          var sink = channel._sink;
-          null !== sink ? sink.close() : (channel._status = 1);
+          if (!channel.canceled) {
+            var sink = channel._sink;
+            null !== sink ? sink.close() : (channel._status = 1);
+          }
         },
         error: function (reason) {
-          var sink = channel._sink;
-          null !== sink
-            ? sink.error(reason)
-            : ((channel._status = 2), (channel._errorReason = reason));
+          if (!channel.canceled) {
+            var sink = channel._sink;
+            null !== sink
+              ? sink.error(reason)
+              : ((channel._status = 2), (channel._errorReason = reason));
+          }
+        },
+        cancel: function () {
+          channel.canceled = !0;
+          channel._sink = null;
+          channel._buffer = null;
         }
       };
       return channel;

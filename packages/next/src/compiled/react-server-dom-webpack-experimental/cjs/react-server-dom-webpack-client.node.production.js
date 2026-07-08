@@ -2142,6 +2142,8 @@ function close(weakResponse) {
     : reportGlobalError(weakResponse, Error("Connection closed."));
 }
 function connectModelChannel(channel, sink) {
+  if (channel.canceled)
+    throw Error("This ModelChannel has already been canceled.");
   if (null !== channel._sink)
     throw Error("A ModelChannel can only have a single consumer.");
   channel._sink = sink;
@@ -2303,10 +2305,25 @@ exports.createFromFetch = function (promiseForResponse, options) {
   );
   return getChunk(response, 0);
 };
-exports.createFromModelChannel = function (channel, options) {
-  var response = createResponseFromOptions(options);
+exports.createFromModelChannel = function (
+  channel,
+  serverConsumerManifest,
+  options
+) {
+  var response = new ResponseInstance(
+    serverConsumerManifest.moduleMap,
+    serverConsumerManifest.serverModuleMap,
+    serverConsumerManifest.moduleLoading,
+    noServerCall,
+    options ? options.encodeFormAction : void 0,
+    options && "string" === typeof options.nonce ? options.nonce : void 0,
+    void 0,
+    options && options.unstable_allowPartialStream
+      ? options.unstable_allowPartialStream
+      : !1
+  );
   createStreamState();
-  options = close.bind(null, response);
+  serverConsumerManifest = close.bind(null, response);
   connectModelChannel(channel, {
     row: function (id, tag, payload) {
       switch (tag) {
@@ -2409,7 +2426,7 @@ exports.createFromModelChannel = function (channel, options) {
             );
       }
     },
-    close: options,
+    close: serverConsumerManifest,
     error: function (reason) {
       return reportGlobalError(response, reason);
     }
@@ -2451,23 +2468,35 @@ exports.createModelChannel = function () {
     _buffer: null,
     _status: 0,
     _errorReason: null,
+    canceled: !1,
     push: function (id, tag, payload) {
-      var sink = channel._sink;
-      null !== sink
-        ? sink.row(id, tag, payload)
-        : ((sink = channel._buffer),
-          null === sink && (sink = channel._buffer = []),
-          sink.push(id, tag, payload));
+      if (!channel.canceled) {
+        var sink = channel._sink;
+        null !== sink
+          ? sink.row(id, tag, payload)
+          : ((sink = channel._buffer),
+            null === sink && (sink = channel._buffer = []),
+            sink.push(id, tag, payload));
+      }
     },
     close: function () {
-      var sink = channel._sink;
-      null !== sink ? sink.close() : (channel._status = 1);
+      if (!channel.canceled) {
+        var sink = channel._sink;
+        null !== sink ? sink.close() : (channel._status = 1);
+      }
     },
     error: function (reason) {
-      var sink = channel._sink;
-      null !== sink
-        ? sink.error(reason)
-        : ((channel._status = 2), (channel._errorReason = reason));
+      if (!channel.canceled) {
+        var sink = channel._sink;
+        null !== sink
+          ? sink.error(reason)
+          : ((channel._status = 2), (channel._errorReason = reason));
+      }
+    },
+    cancel: function () {
+      channel.canceled = !0;
+      channel._sink = null;
+      channel._buffer = null;
     }
   };
   return channel;

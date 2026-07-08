@@ -3714,18 +3714,12 @@ async function renderToStream(
             )
           }
 
-          // Deliver Flight rows to the SSR pass over a ModelChannel unless
-          // this is a data-only resume of a postponed prerender, which never
-          // runs an SSR pass that could consume the channel. Setting
+          // Deliver Flight rows to the SSR pass over a ModelChannel. Render
+          // shapes that never run an SSR pass (a data-only resume of a
+          // postponed prerender) cancel the channel instead. Setting
           // NEXT_FLIGHT_MODEL_CHANNEL=0 restores the byte-stream tee for SSR
           // (used as the baseline when benchmarking this prototype).
-          if (
-            process.env.NEXT_FLIGHT_MODEL_CHANNEL !== '0' &&
-            !(
-              typeof renderOpts.postponed === 'string' &&
-              postponedState?.type === DynamicState.DATA
-            )
-          ) {
+          if (process.env.NEXT_FLIGHT_MODEL_CHANNEL !== '0') {
             // react-server-dom-webpack/client must not be hoisted for require cache clearing to work correctly
             const { createModelChannel } =
               // eslint-disable-next-line import/no-extraneous-dependencies
@@ -3804,6 +3798,11 @@ async function renderToStream(
         // provided to React.
         if (typeof renderOpts.postponed === 'string') {
           if (postponedState?.type === DynamicState.DATA) {
+            // No SSR pass runs for a data-only resume, so nothing will ever
+            // consume the ModelChannel. Cancel it to release buffered rows.
+            reactServerChannel?.cancel()
+            reactServerChannel = undefined
+
             // We have a complete HTML Document in the prerender but we need to
             // still include the new server component render because it was not included
             // in the static prelude.

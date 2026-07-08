@@ -5003,6 +5003,8 @@
       }
     }
     function connectModelChannel(channel, sink) {
+      if (channel.canceled)
+        throw Error("This ModelChannel has already been canceled.");
       if (null !== channel._sink)
         throw Error("A ModelChannel can only have a single consumer.");
       channel._sink = sink;
@@ -5406,19 +5408,44 @@
       );
       return getRoot(response);
     };
-    exports.createFromModelChannel = function (channel, options) {
-      var response$jscomp$0 = createResponseFromOptions(options),
-        streamState = createStreamState(response$jscomp$0, channel),
-        handleClose = close.bind(null, response$jscomp$0);
-      if (options && options.debugChannel && options.debugChannel.readable) {
-        var streamDoneCount = 0;
-        handleClose = function () {
-          2 === ++streamDoneCount && close(response$jscomp$0);
+    exports.createFromModelChannel = function (
+      channel,
+      serverConsumerManifest,
+      options
+    ) {
+      var response$jscomp$0 = createResponse(
+          serverConsumerManifest.moduleMap,
+          serverConsumerManifest.serverModuleMap,
+          serverConsumerManifest.moduleLoading,
+          noServerCall,
+          options ? options.encodeFormAction : void 0,
+          options && "string" === typeof options.nonce ? options.nonce : void 0,
+          void 0,
+          options && options.unstable_allowPartialStream
+            ? options.unstable_allowPartialStream
+            : !1,
+          options && options.findSourceMapURL
+            ? options.findSourceMapURL
+            : void 0,
+          options ? !0 === options.replayConsoleLogs : !1,
+          options && options.environmentName ? options.environmentName : void 0,
+          options && null != options.startTime ? options.startTime : void 0,
+          options && null != options.endTime ? options.endTime : void 0,
+          options && void 0 !== options.debugChannel
+            ? { hasReadable: !0, callback: null }
+            : void 0
+        ),
+        modelStreamState = createStreamState(response$jscomp$0, channel);
+      serverConsumerManifest = close.bind(null, response$jscomp$0);
+      if (options && options.debugChannel) {
+        var streamEndedCount = 0;
+        serverConsumerManifest = function () {
+          2 === ++streamEndedCount && close(response$jscomp$0);
         };
-        startReadingFromStream$1(
+        startReadingFromStream(
           response$jscomp$0,
-          options.debugChannel.readable,
-          handleClose
+          options.debugChannel,
+          serverConsumerManifest
         );
       }
       connectModelChannel(channel, {
@@ -5432,16 +5459,16 @@
                   resolveDebugHalt(response, id);
                   break;
                 }
-                resolveModel(response, id, payload, streamState);
+                resolveModel(response, id, payload, modelStreamState);
                 break;
               case "I":
-                resolveModule(response, id, payload, streamState);
+                resolveModule(response, id, payload, modelStreamState);
                 break;
               case "E":
-                resolveErrorModel(response, id, payload, streamState);
+                resolveErrorModel(response, id, payload, modelStreamState);
                 break;
               case "T":
-                resolveText(response, id, payload, streamState);
+                resolveText(response, id, payload, modelStreamState);
                 break;
               case "N":
                 response._timeOrigin = payload - performance.timeOrigin;
@@ -5456,22 +5483,22 @@
                 resolveConsoleEntry(response, payload);
                 break;
               case "R":
-                startReadableStream(response, id, void 0, streamState);
+                startReadableStream(response, id, void 0, modelStreamState);
                 break;
               case "r":
-                startReadableStream(response, id, "bytes", streamState);
+                startReadableStream(response, id, "bytes", modelStreamState);
                 break;
               case "X":
-                startAsyncIterable(response, id, !1, streamState);
+                startAsyncIterable(response, id, !1, modelStreamState);
                 break;
               case "x":
-                startAsyncIterable(response, id, !0, streamState);
+                startAsyncIterable(response, id, !0, modelStreamState);
                 break;
               case "C":
                 stopStream(response, id, void 0 === payload ? "" : payload);
                 break;
               case "b":
-                resolveBuffer(response, id, payload, streamState);
+                resolveBuffer(response, id, payload, modelStreamState);
                 break;
               case "A":
                 resolveBuffer(
@@ -5481,7 +5508,7 @@
                     payload.byteLength === payload.buffer.byteLength
                     ? payload.buffer
                     : payload.slice().buffer,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "O":
@@ -5492,11 +5519,11 @@
                   payload,
                   Int8Array,
                   1,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "o":
-                resolveBuffer(response, id, payload, streamState);
+                resolveBuffer(response, id, payload, modelStreamState);
                 break;
               case "U":
                 resolveTypedArray(
@@ -5506,7 +5533,7 @@
                   payload,
                   Uint8ClampedArray,
                   1,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "S":
@@ -5517,7 +5544,7 @@
                   payload,
                   Int16Array,
                   2,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "s":
@@ -5528,7 +5555,7 @@
                   payload,
                   Uint16Array,
                   2,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "L":
@@ -5539,7 +5566,7 @@
                   payload,
                   Int32Array,
                   4,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "l":
@@ -5550,7 +5577,7 @@
                   payload,
                   Uint32Array,
                   4,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "G":
@@ -5561,7 +5588,7 @@
                   payload,
                   Float32Array,
                   4,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "g":
@@ -5572,7 +5599,7 @@
                   payload,
                   Float64Array,
                   8,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "M":
@@ -5583,7 +5610,7 @@
                   payload,
                   BigInt64Array,
                   8,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "m":
@@ -5594,7 +5621,7 @@
                   payload,
                   BigUint64Array,
                   8,
-                  streamState
+                  modelStreamState
                 );
                 break;
               case "V":
@@ -5605,7 +5632,7 @@
                   payload,
                   DataView,
                   1,
-                  streamState
+                  modelStreamState
                 );
                 break;
               default:
@@ -5620,7 +5647,7 @@
             }
           }
         },
-        close: handleClose,
+        close: serverConsumerManifest,
         error: function (reason) {
           return reportGlobalError(response$jscomp$0, reason);
         }
@@ -5695,23 +5722,35 @@
         _buffer: null,
         _status: 0,
         _errorReason: null,
+        canceled: !1,
         push: function (id, tag, payload) {
-          var sink = channel._sink;
-          null !== sink
-            ? sink.row(id, tag, payload)
-            : ((sink = channel._buffer),
-              null === sink && (sink = channel._buffer = []),
-              sink.push(id, tag, payload));
+          if (!channel.canceled) {
+            var sink = channel._sink;
+            null !== sink
+              ? sink.row(id, tag, payload)
+              : ((sink = channel._buffer),
+                null === sink && (sink = channel._buffer = []),
+                sink.push(id, tag, payload));
+          }
         },
         close: function () {
-          var sink = channel._sink;
-          null !== sink ? sink.close() : (channel._status = 1);
+          if (!channel.canceled) {
+            var sink = channel._sink;
+            null !== sink ? sink.close() : (channel._status = 1);
+          }
         },
         error: function (reason) {
-          var sink = channel._sink;
-          null !== sink
-            ? sink.error(reason)
-            : ((channel._status = 2), (channel._errorReason = reason));
+          if (!channel.canceled) {
+            var sink = channel._sink;
+            null !== sink
+              ? sink.error(reason)
+              : ((channel._status = 2), (channel._errorReason = reason));
+          }
+        },
+        cancel: function () {
+          channel.canceled = !0;
+          channel._sink = null;
+          channel._buffer = null;
         }
       };
       return channel;

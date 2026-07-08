@@ -151,16 +151,17 @@ export function getFlightResponseFromModelChannel<T>(
 
   const { moduleLoading, ssrModuleMapping } = getClientReferenceManifest()
 
-  // createFromModelChannel shares the edge client implementation, so the
-  // debug channel must be a web ReadableStream even in the Node.js runtime.
-  let webDebugStream: ReadableStream<Uint8Array> | undefined
+  // The Node.js-flavored createFromModelChannel takes a Node.js Readable as
+  // the debug channel. When __NEXT_USE_NODE_STREAMS is enabled, the debug
+  // channel produces Node Readables natively; otherwise convert.
+  let nodeDebugStream: Readable | undefined
   if (debugStream) {
-    if (debugStream instanceof ReadableStream) {
-      webDebugStream = debugStream
+    const { Readable } = require('node:stream') as typeof import('node:stream')
+    if (debugStream instanceof Readable) {
+      nodeDebugStream = debugStream
     } else {
-      const { Readable } =
-        require('node:stream') as typeof import('node:stream')
-      webDebugStream = Readable.toWeb(debugStream) as ReadableStream<Uint8Array>
+      type WebReadableStream = import('stream/web').ReadableStream
+      nodeDebugStream = Readable.fromWeb(debugStream as WebReadableStream)
     }
   }
 
@@ -169,17 +170,20 @@ export function getFlightResponseFromModelChannel<T>(
     // eslint-disable-next-line import/no-extraneous-dependencies
     require('react-server-dom-webpack/client') as typeof import('react-server-dom-webpack/client')
 
-  const newResponse = createFromModelChannel<T>(channel, {
-    findSourceMapURL,
-    serverConsumerManifest: {
+  const newResponse = createFromModelChannel<T>(
+    channel,
+    {
       moduleLoading,
       moduleMap: ssrModuleMapping,
       serverModuleMap: null,
     },
-    nonce,
-    debugChannel: webDebugStream ? { readable: webDebugStream } : undefined,
-    endTime: debugEndTime,
-  })
+    {
+      findSourceMapURL,
+      nonce,
+      debugChannel: nodeDebugStream,
+      endTime: debugEndTime,
+    }
+  )
 
   return cacheFlightResponse(channel, newResponse)
 }
