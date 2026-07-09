@@ -2006,9 +2006,11 @@ function provideDispatchScope(weakResponse, runInScope) {
     weakResponse._dispatchScope = runInScope;
     var deferred = weakResponse._deferredDispatches;
     weakResponse._deferredDispatches = null;
-    if (null !== deferred)
-      for (weakResponse = 0; weakResponse < deferred.length; weakResponse++)
-        runInScope(deferred[weakResponse]);
+    null !== deferred &&
+      0 < deferred.length &&
+      runInScope(function () {
+        for (var i = 0; i < deferred.length; i++) deferred[i]();
+      });
   }
 }
 function connectRenderResult(weakResponse, result, streamState) {

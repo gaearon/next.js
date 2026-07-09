@@ -4876,6 +4876,22 @@
         : ((response = response._deferredDispatches),
           null !== response ? response.push(dispatch) : dispatch());
     }
+    function provideDispatchScope(weakResponse, runInScope) {
+      if (
+        !hasGCedResponse(weakResponse) &&
+        ((weakResponse = unwrapWeakResponse(weakResponse)),
+        null === weakResponse._dispatchScope)
+      ) {
+        weakResponse._dispatchScope = runInScope;
+        var deferred = weakResponse._deferredDispatches;
+        weakResponse._deferredDispatches = null;
+        null !== deferred &&
+          0 < deferred.length &&
+          runInScope(function () {
+            for (var i = 0; i < deferred.length; i++) deferred[i]();
+          });
+      }
+    }
     function connectRenderResult(weakResponse, result, streamState) {
       hasGCedResponse(weakResponse) ||
         (unwrapWeakResponse(weakResponse)._deferredDispatches = []);
@@ -5536,7 +5552,7 @@
       serverConsumerManifest,
       options
     ) {
-      var response$jscomp$0 = createResponse(
+      var response = createResponse(
         serverConsumerManifest.moduleMap,
         serverConsumerManifest.serverModuleMap,
         serverConsumerManifest.moduleLoading,
@@ -5554,27 +5570,18 @@
         options && null != options.endTime ? options.endTime : void 0,
         void 0
       );
-      serverConsumerManifest = createStreamState(response$jscomp$0, result);
-      connectRenderResult(response$jscomp$0, result, serverConsumerManifest);
-      var root = getRoot(response$jscomp$0),
+      serverConsumerManifest = createStreamState(response, result);
+      connectRenderResult(response, result, serverConsumerManifest);
+      var root = getRoot(response),
         scopeCaptured = !1;
       return {
         then: function (resolve, reject) {
-          if (!scopeCaptured) {
-            scopeCaptured = !0;
-            var runInScope = async_hooks.AsyncLocalStorage.snapshot();
-            if (!hasGCedResponse(response$jscomp$0)) {
-              var response = unwrapWeakResponse(response$jscomp$0);
-              if (null === response._dispatchScope) {
-                response._dispatchScope = runInScope;
-                var deferred = response._deferredDispatches;
-                response._deferredDispatches = null;
-                if (null !== deferred)
-                  for (response = 0; response < deferred.length; response++)
-                    runInScope(deferred[response]);
-              }
-            }
-          }
+          scopeCaptured ||
+            ((scopeCaptured = !0),
+            provideDispatchScope(
+              response,
+              async_hooks.AsyncLocalStorage.snapshot()
+            ));
           return root.then(resolve, reject);
         }
       };

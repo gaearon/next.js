@@ -869,7 +869,7 @@ function RequestInstance(
   this.pendingChunks = this.nextChunkId = 0;
   this.consumer = null;
   this.queuedDebugChunks = this.queuedChunks = this.emittedRows = 0;
-  this.sentTimeOrigin = !1;
+  this.byteStreamClaimed = this.sentTimeOrigin = !1;
   this.hints = hints;
   this.abortableTasks = abortSet;
   this.pingedTasks = pingedTasks;
@@ -1486,6 +1486,15 @@ function closeConsumerIfDone(request) {
     try {
       consumer.close();
     } catch (x) {}
+    request.byteStreamClaimed ||
+      null !== request.destination ||
+      14 === request.status ||
+      ((request.status = 13),
+      (request.fatalError = Error(formatProdErrorMessage(604))),
+      (request.completedImportChunks.length = 0),
+      (request.completedHintChunks.length = 0),
+      (request.completedRegularChunks.length = 0),
+      (request.completedErrorChunks.length = 0));
   }
 }
 function encodeReferenceChunk(request, id, reference) {
@@ -2308,6 +2317,7 @@ function callOnAllReadyIfReady(request) {
     ((request = request.onAllReady), request());
 }
 function startFlowing(request, destination) {
+  request.byteStreamClaimed = !0;
   if (13 === request.status)
     (request.status = 14), closeWithError(destination, request.fatalError);
   else if (14 !== request.status && null === request.destination) {

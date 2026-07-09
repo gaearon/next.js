@@ -4723,17 +4723,19 @@
           null !== response ? response.push(dispatch) : dispatch());
     }
     function provideDispatchScope(weakResponse, runInScope) {
-      if (!hasGCedResponse(weakResponse)) {
-        var response = unwrapWeakResponse(weakResponse);
-        if (
-          null === response._dispatchScope &&
-          ((response._dispatchScope = runInScope),
-          (weakResponse = response._deferredDispatches),
-          (response._deferredDispatches = null),
-          null !== weakResponse)
-        )
-          for (response = 0; response < weakResponse.length; response++)
-            runInScope(weakResponse[response]);
+      if (
+        !hasGCedResponse(weakResponse) &&
+        ((weakResponse = unwrapWeakResponse(weakResponse)),
+        null === weakResponse._dispatchScope)
+      ) {
+        weakResponse._dispatchScope = runInScope;
+        var deferred = weakResponse._deferredDispatches;
+        weakResponse._deferredDispatches = null;
+        null !== deferred &&
+          0 < deferred.length &&
+          runInScope(function () {
+            for (var i = 0; i < deferred.length; i++) deferred[i]();
+          });
       }
     }
     function connectRenderResult(weakResponse, result, streamState) {

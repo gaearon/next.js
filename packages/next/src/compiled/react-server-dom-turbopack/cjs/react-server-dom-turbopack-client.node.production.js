@@ -2097,6 +2097,18 @@ function scheduleDispatch(response, dispatch) {
     : ((response = response._deferredDispatches),
       null !== response ? response.push(dispatch) : dispatch());
 }
+function provideDispatchScope(weakResponse, runInScope) {
+  if (null === weakResponse._dispatchScope) {
+    weakResponse._dispatchScope = runInScope;
+    var deferred = weakResponse._deferredDispatches;
+    weakResponse._deferredDispatches = null;
+    null !== deferred &&
+      0 < deferred.length &&
+      runInScope(function () {
+        for (var i = 0; i < deferred.length; i++) deferred[i]();
+      });
+  }
+}
 function connectRenderResult(weakResponse, result, streamState) {
   weakResponse._deferredDispatches = [];
   result._attach({
@@ -2425,17 +2437,12 @@ exports.createFromRender = function (result, serverConsumerManifest, options) {
     scopeCaptured = !1;
   return {
     then: function (resolve, reject) {
-      if (!scopeCaptured) {
-        scopeCaptured = !0;
-        var runInScope = async_hooks.AsyncLocalStorage.snapshot();
-        if (null === response._dispatchScope) {
-          response._dispatchScope = runInScope;
-          var deferred = response._deferredDispatches;
-          response._deferredDispatches = null;
-          if (null !== deferred)
-            for (var i = 0; i < deferred.length; i++) runInScope(deferred[i]);
-        }
-      }
+      scopeCaptured ||
+        ((scopeCaptured = !0),
+        provideDispatchScope(
+          response,
+          async_hooks.AsyncLocalStorage.snapshot()
+        ));
       return root.then(resolve, reject);
     }
   };

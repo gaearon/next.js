@@ -1104,7 +1104,7 @@
       this.pendingChunks = this.nextChunkId = 0;
       this.consumer = null;
       this.queuedDebugChunks = this.queuedChunks = this.emittedRows = 0;
-      this.sentTimeOrigin = !1;
+      this.byteStreamClaimed = this.sentTimeOrigin = !1;
       this.hints = hints;
       this.abortableTasks = abortSet;
       this.pingedTasks = pingedTasks;
@@ -2453,6 +2453,19 @@
         try {
           consumer.close();
         } catch (x) {}
+        request.byteStreamClaimed ||
+          null !== request.destination ||
+          null !== request.debugDestination ||
+          request.status === CLOSED ||
+          ((request.status = CLOSING),
+          (request.fatalError = Error(
+            "The byte stream of this render was released because an in-process consumer received the full render before anything claimed the stream. To also read the byte stream, claim it before the render finishes."
+          )),
+          (request.completedImportChunks.length = 0),
+          (request.completedHintChunks.length = 0),
+          (request.completedRegularChunks.length = 0),
+          (request.completedErrorChunks.length = 0),
+          (request.completedDebugChunks.length = 0));
       }
     }
     function createRenderResult(request) {
@@ -4511,6 +4524,7 @@
         ((request = request.onAllReady), request());
     }
     function startFlowing(request, destination) {
+      request.byteStreamClaimed = !0;
       if (request.status === CLOSING)
         (request.status = CLOSED), destination.destroy(request.fatalError);
       else if (request.status !== CLOSED && null === request.destination) {
@@ -7118,7 +7132,7 @@
         void 0 !== debugChannelReadable
       );
       model = createRenderResult(request);
-      webpackMap = createPipeableStream(request, void 0);
+      webpackMap = createPipeableStream(request, debugChannelReadable);
       if (options && options.signal) {
         var signal = options.signal;
         if (signal.aborted)
