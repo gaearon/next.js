@@ -33056,7 +33056,7 @@
     };
     (function () {
       var isomorphicReactPackageVersion = React.version;
-      if ("19.3.0" !== isomorphicReactPackageVersion)
+      if ("0.0.0-experimental-3508aee6-20260702" !== isomorphicReactPackageVersion)
         throw Error(
           'Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:\n  - react:      ' +
             (isomorphicReactPackageVersion +
@@ -33097,10 +33097,10 @@
       !(function () {
         var internals = {
           bundleType: 1,
-          version: "19.3.0",
+          version: "0.0.0-experimental-3508aee6-20260702",
           rendererPackageName: "react-dom",
           currentDispatcherRef: ReactSharedInternals,
-          reconcilerVersion: "19.3.0"
+          reconcilerVersion: "0.0.0-experimental-3508aee6-20260702"
         };
         internals.overrideHookState = overrideHookState;
         internals.overrideHookStateDeletePath = overrideHookStateDeletePath;
@@ -33248,7 +33248,7 @@
       listenToAllSupportedEvents(container);
       return new ReactDOMHydrationRoot(initialChildren);
     };
-    exports.version = "19.3.0";
+    exports.version = "0.0.0-experimental-3508aee6-20260702";
     "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ &&
       "function" ===
         typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop &&

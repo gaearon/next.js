@@ -7781,7 +7781,7 @@ function getPostponedState(request) {
 }
 function ensureCorrectIsomorphicReactVersion() {
   var isomorphicReactPackageVersion = React.version;
-  if ("19.3.0" !== isomorphicReactPackageVersion)
+  if ("0.0.0-experimental-3508aee6-20260702" !== isomorphicReactPackageVersion)
     throw Error(
       'Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:\n  - react:      ' +
         (isomorphicReactPackageVersion +
@@ -8335,4 +8335,4 @@ exports.resumeToPipeableStream = function (children, postponedState, options) {
     }
   };
 };
-exports.version = "19.3.0";
+exports.version = "0.0.0-experimental-3508aee6-20260702";
