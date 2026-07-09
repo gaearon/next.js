@@ -117,49 +117,6 @@
       if (hasOwnProperty.call(moduleExports, metadata[2]))
         return moduleExports[metadata[2]];
     }
-    function dispatchHint(code, model) {
-      var dispatcher = ReactDOMSharedInternals.d;
-      switch (code) {
-        case "D":
-          dispatcher.D(model);
-          break;
-        case "C":
-          "string" === typeof model
-            ? dispatcher.C(model)
-            : dispatcher.C(model[0], model[1]);
-          break;
-        case "L":
-          code = model[0];
-          var as = model[1];
-          3 === model.length
-            ? dispatcher.L(code, as, model[2])
-            : dispatcher.L(code, as);
-          break;
-        case "m":
-          "string" === typeof model
-            ? dispatcher.m(model)
-            : dispatcher.m(model[0], model[1]);
-          break;
-        case "X":
-          "string" === typeof model
-            ? dispatcher.X(model)
-            : dispatcher.X(model[0], model[1]);
-          break;
-        case "S":
-          "string" === typeof model
-            ? dispatcher.S(model)
-            : dispatcher.S(
-                model[0],
-                0 === model[1] ? void 0 : model[1],
-                3 === model.length ? model[2] : void 0
-              );
-          break;
-        case "M":
-          "string" === typeof model
-            ? dispatcher.M(model)
-            : dispatcher.M(model[0], model[1]);
-      }
-    }
     function getIteratorFn(maybeIterable) {
       if (null === maybeIterable || "object" !== typeof maybeIterable)
         return null;
@@ -1900,12 +1857,7 @@
       initializingHandler = null;
       var isObjectForm = "resolved_object" === chunk.status,
         resolvedModel = chunk.value,
-        response = chunk.reason,
-        dispatches = response._deferredDispatches;
-      if (null !== dispatches && 0 < dispatches.length) {
-        for (var i = 0; i < dispatches.length; i++) dispatches[i]();
-        dispatches.length = 0;
-      }
+        response = chunk.reason;
       chunk.status = "blocked";
       chunk.value = null;
       chunk.reason = null;
@@ -2875,7 +2827,7 @@
       this._callServer = void 0 !== callServer ? callServer : missingCall;
       this._encodeFormAction = encodeFormAction;
       this._nonce = nonce;
-      this._deferredDispatches = null;
+      this._dispatchScope = this._deferredDispatches = null;
       this._chunks = chunks;
       this._stringDecoder = new TextDecoder();
       this._closed = !1;
@@ -3004,8 +2956,7 @@
         response._bundlerConfig,
         model
       );
-      model = response._deferredDispatches;
-      null !== model && model.push(function () {});
+      scheduleDispatch(response, function () {});
       if ((model = preloadModule(clientReference))) {
         if (chunk) {
           releasePendingChunk(response, chunk);
@@ -3355,12 +3306,49 @@
     }
     function resolveHint(response, code, model) {
       var hintModel = parseModel(response, model);
-      response = response._deferredDispatches;
-      null !== response
-        ? response.push(function () {
-            return dispatchHint(code, hintModel);
-          })
-        : dispatchHint(code, hintModel);
+      scheduleDispatch(response, function () {
+        var dispatcher = ReactDOMSharedInternals.d;
+        switch (code) {
+          case "D":
+            dispatcher.D(hintModel);
+            break;
+          case "C":
+            "string" === typeof hintModel
+              ? dispatcher.C(hintModel)
+              : dispatcher.C(hintModel[0], hintModel[1]);
+            break;
+          case "L":
+            var _href3 = hintModel[0],
+              as = hintModel[1];
+            3 === hintModel.length
+              ? dispatcher.L(_href3, as, hintModel[2])
+              : dispatcher.L(_href3, as);
+            break;
+          case "m":
+            "string" === typeof hintModel
+              ? dispatcher.m(hintModel)
+              : dispatcher.m(hintModel[0], hintModel[1]);
+            break;
+          case "X":
+            "string" === typeof hintModel
+              ? dispatcher.X(hintModel)
+              : dispatcher.X(hintModel[0], hintModel[1]);
+            break;
+          case "S":
+            "string" === typeof hintModel
+              ? dispatcher.S(hintModel)
+              : dispatcher.S(
+                  hintModel[0],
+                  0 === hintModel[1] ? void 0 : hintModel[1],
+                  3 === hintModel.length ? hintModel[2] : void 0
+                );
+            break;
+          case "M":
+            "string" === typeof hintModel
+              ? dispatcher.M(hintModel)
+              : dispatcher.M(hintModel[0], hintModel[1]);
+        }
+      });
     }
     function createFakeFunction(
       name,
@@ -3734,8 +3722,8 @@
       )
         byteLength += buffer[i].byteLength;
       byteLength = new Uint8Array(byteLength);
-      for (var _i4 = (i = 0); _i4 < l; _i4++) {
-        var chunk = buffer[_i4];
+      for (var _i3 = (i = 0); _i3 < l; _i3++) {
+        var chunk = buffer[_i3];
         byteLength.set(chunk, i);
         i += chunk.byteLength;
       }
@@ -3835,8 +3823,8 @@
             break;
           }
         }
-        for (var _i5 = debugInfo.length - 1; 0 <= _i5; _i5--) {
-          var _info = debugInfo[_i5];
+        for (var _i4 = debugInfo.length - 1; 0 <= _i4; _i4--) {
+          var _info = debugInfo[_i4];
           if ("number" === typeof _info.time && _info.time > parentEndTime) {
             parentEndTime = _info.time;
             break;
@@ -3853,13 +3841,13 @@
         var childrenEndTime = -Infinity,
           childTrackIdx = trackIdx$jscomp$6,
           childTrackTime = trackTime,
-          _i6 = 0;
-        _i6 < children.length;
-        _i6++
+          _i5 = 0;
+        _i5 < children.length;
+        _i5++
       ) {
         var childResult = flushComponentPerformance(
           response$jscomp$0,
-          children[_i6],
+          children[_i5],
           childTrackIdx,
           childTrackTime,
           parentEndTime
@@ -3877,16 +3865,16 @@
             isLastComponent = !0,
             endTime = -1,
             endTimeIdx = -1,
-            _i7 = debugInfo.length - 1;
-          0 <= _i7;
-          _i7--
+            _i6 = debugInfo.length - 1;
+          0 <= _i6;
+          _i6--
         ) {
-          var _info2 = debugInfo[_i7];
+          var _info2 = debugInfo[_i6];
           if ("number" === typeof _info2.time) {
             0 === componentEndTime && (componentEndTime = _info2.time);
             var time = _info2.time;
             if (-1 < endTimeIdx)
-              for (var j = endTimeIdx - 1; j > _i7; j--) {
+              for (var j = endTimeIdx - 1; j > _i6; j--) {
                 var candidateInfo = debugInfo[j];
                 if ("string" === typeof candidateInfo.name) {
                   componentEndTime > childrenEndTime &&
@@ -4160,7 +4148,7 @@
               }
             else {
               endTime = time;
-              for (var _j = debugInfo.length - 1; _j > _i7; _j--) {
+              for (var _j = debugInfo.length - 1; _j > _i6; _j--) {
                 var _candidateInfo = debugInfo[_j];
                 if ("string" === typeof _candidateInfo.name) {
                   componentEndTime > childrenEndTime &&
@@ -4292,7 +4280,7 @@
               }
             }
             endTime = time;
-            endTimeIdx = _i7;
+            endTimeIdx = _i6;
           }
         }
       result.endTime = childrenEndTime;
@@ -4672,6 +4660,13 @@
         streamState._rowTag = rowTag;
         streamState._rowLength = rowLength;
       }
+    }
+    function scheduleDispatch(response, dispatch) {
+      var scope = response._dispatchScope;
+      null !== scope
+        ? scope(dispatch)
+        : ((response = response._deferredDispatches),
+          null !== response ? response.push(dispatch) : dispatch());
     }
     function parseModel(response, json) {
       json = JSON.parse(json);

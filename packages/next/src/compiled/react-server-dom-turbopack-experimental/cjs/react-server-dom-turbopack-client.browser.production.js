@@ -110,51 +110,8 @@ function requireModule(metadata) {
     return moduleExports[metadata[2]];
 }
 var ReactDOMSharedInternals =
-  ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
-function dispatchHint(code, model) {
-  var dispatcher = ReactDOMSharedInternals.d;
-  switch (code) {
-    case "D":
-      dispatcher.D(model);
-      break;
-    case "C":
-      "string" === typeof model
-        ? dispatcher.C(model)
-        : dispatcher.C(model[0], model[1]);
-      break;
-    case "L":
-      code = model[0];
-      var as = model[1];
-      3 === model.length
-        ? dispatcher.L(code, as, model[2])
-        : dispatcher.L(code, as);
-      break;
-    case "m":
-      "string" === typeof model
-        ? dispatcher.m(model)
-        : dispatcher.m(model[0], model[1]);
-      break;
-    case "X":
-      "string" === typeof model
-        ? dispatcher.X(model)
-        : dispatcher.X(model[0], model[1]);
-      break;
-    case "S":
-      "string" === typeof model
-        ? dispatcher.S(model)
-        : dispatcher.S(
-            model[0],
-            0 === model[1] ? void 0 : model[1],
-            3 === model.length ? model[2] : void 0
-          );
-      break;
-    case "M":
-      "string" === typeof model
-        ? dispatcher.M(model)
-        : dispatcher.M(model[0], model[1]);
-  }
-}
-var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"),
+    ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"),
   REACT_LAZY_TYPE = Symbol.for("react.lazy"),
   MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
 function getIteratorFn(maybeIterable) {
@@ -770,12 +727,7 @@ function initializeModelChunk(chunk) {
   initializingHandler = null;
   var isObjectForm = "resolved_object" === chunk.status,
     resolvedModel = chunk.value,
-    response = chunk.reason,
-    dispatches = response._deferredDispatches;
-  if (null !== dispatches && 0 < dispatches.length) {
-    for (var i = 0; i < dispatches.length; i++) dispatches[i]();
-    dispatches.length = 0;
-  }
+    response = chunk.reason;
   chunk.status = "blocked";
   chunk.value = null;
   chunk.reason = null;
@@ -927,20 +879,20 @@ function fulfillReference(response, reference, value) {
       value.$$typeof === REACT_LAZY_TYPE;
 
     ) {
-      var referencedChunk$45 = value._payload;
-      if (referencedChunk$45 === handler.chunk) value = handler.value;
+      var referencedChunk$44 = value._payload;
+      if (referencedChunk$44 === handler.chunk) value = handler.value;
       else {
-        switch (referencedChunk$45.status) {
+        switch (referencedChunk$44.status) {
           case "resolved_model":
           case "resolved_object":
-            initializeModelChunk(referencedChunk$45);
+            initializeModelChunk(referencedChunk$44);
             break;
           case "resolved_module":
-            initializeModuleChunk(referencedChunk$45);
+            initializeModuleChunk(referencedChunk$44);
         }
-        switch (referencedChunk$45.status) {
+        switch (referencedChunk$44.status) {
           case "fulfilled":
-            value = referencedChunk$45.value;
+            value = referencedChunk$44.value;
             continue;
         }
         break;
@@ -1372,7 +1324,7 @@ function ResponseInstance(
   this._callServer = void 0 !== callServer ? callServer : missingCall;
   this._encodeFormAction = encodeFormAction;
   this._nonce = nonce;
-  this._deferredDispatches = null;
+  this._dispatchScope = this._deferredDispatches = null;
   this._chunks = chunks;
   this._stringDecoder = new TextDecoder();
   this._closed = !1;
@@ -1393,8 +1345,7 @@ function resolveModule(response, id, model) {
     chunk = chunks.get(id);
   model = parseModel(response, model);
   var clientReference = resolveClientReference(response._bundlerConfig, model);
-  model = response._deferredDispatches;
-  null !== model && model.push(function () {});
+  scheduleDispatch(response, function () {});
   if ((model = preloadModule(clientReference))) {
     if (chunk) {
       var blockedChunk = chunk;
@@ -1467,8 +1418,8 @@ function startReadableStream(response, id, type) {
             (previousBlockedChunk = chunk));
       } else {
         chunk = previousBlockedChunk;
-        var chunk$56 = createPendingChunk();
-        chunk$56.then(
+        var chunk$55 = createPendingChunk();
+        chunk$55.then(
           function (v) {
             return controller.enqueue(v);
           },
@@ -1476,10 +1427,10 @@ function startReadableStream(response, id, type) {
             return controller.error(e);
           }
         );
-        previousBlockedChunk = chunk$56;
+        previousBlockedChunk = chunk$55;
         chunk.then(function () {
-          previousBlockedChunk === chunk$56 && (previousBlockedChunk = null);
-          resolveModelChunk(response, chunk$56, json, status);
+          previousBlockedChunk === chunk$55 && (previousBlockedChunk = null);
+          resolveModelChunk(response, chunk$55, json, status);
         });
       }
     },
@@ -1633,19 +1584,56 @@ function resolveErrorProd() {
 }
 function resolveHint(response, code, model) {
   var hintModel = parseModel(response, model);
-  response = response._deferredDispatches;
-  null !== response
-    ? response.push(function () {
-        return dispatchHint(code, hintModel);
-      })
-    : dispatchHint(code, hintModel);
+  scheduleDispatch(response, function () {
+    var dispatcher = ReactDOMSharedInternals.d;
+    switch (code) {
+      case "D":
+        dispatcher.D(hintModel);
+        break;
+      case "C":
+        "string" === typeof hintModel
+          ? dispatcher.C(hintModel)
+          : dispatcher.C(hintModel[0], hintModel[1]);
+        break;
+      case "L":
+        var href$4 = hintModel[0],
+          as = hintModel[1];
+        3 === hintModel.length
+          ? dispatcher.L(href$4, as, hintModel[2])
+          : dispatcher.L(href$4, as);
+        break;
+      case "m":
+        "string" === typeof hintModel
+          ? dispatcher.m(hintModel)
+          : dispatcher.m(hintModel[0], hintModel[1]);
+        break;
+      case "X":
+        "string" === typeof hintModel
+          ? dispatcher.X(hintModel)
+          : dispatcher.X(hintModel[0], hintModel[1]);
+        break;
+      case "S":
+        "string" === typeof hintModel
+          ? dispatcher.S(hintModel)
+          : dispatcher.S(
+              hintModel[0],
+              0 === hintModel[1] ? void 0 : hintModel[1],
+              3 === hintModel.length ? hintModel[2] : void 0
+            );
+        break;
+      case "M":
+        "string" === typeof hintModel
+          ? dispatcher.M(hintModel)
+          : dispatcher.M(hintModel[0], hintModel[1]);
+    }
+  });
 }
 function mergeBuffer(buffer, lastChunk) {
   for (var l = buffer.length, byteLength = lastChunk.length, i = 0; i < l; i++)
     byteLength += buffer[i].byteLength;
   byteLength = new Uint8Array(byteLength);
-  for (var i$57 = (i = 0); i$57 < l; i$57++) {
-    var chunk = buffer[i$57];
+  for (var i$56 = (i = 0); i$56 < l; i$56++) {
+    var chunk = buffer[i$56];
     byteLength.set(chunk, i);
     i += chunk.byteLength;
   }
@@ -1775,6 +1763,13 @@ function processFullBinaryRow(response, streamState, id, tag, buffer, chunk) {
           : ((response = new ReactPromise("resolved_model", buffer, response)),
             tag.set(id, response));
   }
+}
+function scheduleDispatch(response, dispatch) {
+  var scope = response._dispatchScope;
+  null !== scope
+    ? scope(dispatch)
+    : ((response = response._deferredDispatches),
+      null !== response ? response.push(dispatch) : dispatch());
 }
 function parseModel(response, json) {
   json = JSON.parse(json);
