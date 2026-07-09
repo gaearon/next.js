@@ -9,6 +9,7 @@
  */
 export type {
   AnyStream,
+  FlightRenderHandle,
   ContinueFizzStreamOptions,
   ContinueStaticPrerenderOptions,
   ContinueStreamSharedOptions,

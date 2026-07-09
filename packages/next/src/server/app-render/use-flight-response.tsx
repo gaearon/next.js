@@ -1,6 +1,6 @@
 import type { BinaryStreamOf } from './app-render'
 import type { Readable } from 'node:stream'
-import type { FlightRenderResult } from 'react-server-dom-webpack/client'
+import type { FlightRenderHandle } from './stream-ops'
 
 import {
   htmlEscapeAttributeString,
@@ -127,7 +127,7 @@ export function getFlightStream<T>(
  * was provided to the render), so no debug stream is consumed here.
  */
 export function getFlightResponseFromRender<T>(
-  renderResult: FlightRenderResult,
+  renderResult: FlightRenderHandle,
   nonce: string | undefined
 ): Promise<T> {
   if (process.env.NEXT_RUNTIME === 'edge') {

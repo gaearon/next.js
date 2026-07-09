@@ -41,6 +41,7 @@ import {
   ReplayableNodeStream,
   type AnyStream as AnyStreamType,
 } from './app-render-prerender-utils'
+import type { FlightRenderHandle } from './stream-ops.web'
 import { DetachedPromise } from '../../lib/detached-promise'
 import { getTracer } from '../lib/trace/tracer'
 import { AppRenderSpan } from '../lib/trace/constants'
@@ -54,6 +55,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export type {
+  FlightRenderHandle,
   ContinueStreamSharedOptions,
   ContinueFizzStreamOptions,
   ContinueStaticPrerenderOptions,
@@ -90,7 +92,7 @@ export type FlightComponentMod = {
     model: any,
     webpackMap: any,
     options?: any
-  ) => import('react-server-dom-webpack/client').FlightRenderResult
+  ) => FlightRenderHandle
 }
 
 export type FizzStreamResult = {
@@ -571,7 +573,7 @@ export function renderToNodeFlightRenderResult(
   clientModules: any,
   opts: any
 ): {
-  result: import('react-server-dom-webpack/client').FlightRenderResult
+  result: FlightRenderHandle
   stream: AnyStream
 } {
   if (!ComponentMod.renderFlight) {

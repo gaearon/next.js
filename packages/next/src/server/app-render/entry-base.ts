@@ -26,7 +26,10 @@ type FlightRender = (
   model: any,
   webpackMap: any,
   options?: any
-) => import('react-server-dom-webpack/client').FlightRenderResult
+) => {
+  pipe<Writable extends NodeJS.WritableStream>(destination: Writable): Writable
+  abort(reason?: unknown): void
+}
 
 type FlightPrerenderToNodeStream = (...args: any[]) => Promise<{
   prelude: import('node:stream').Readable
