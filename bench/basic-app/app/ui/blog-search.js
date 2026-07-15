@@ -1,10 +1,7 @@
 'use client'
-import { describeBulkGraph } from './vendor-bulk'
-import { describeTooling } from './vendor-tooling'
-import { describeDataLayer } from './vendor-data'
-import { describeUtils } from './vendor-util'
+import { describeBlogVendor } from './vendor-blog'
 import { useState } from 'react'
-export default function SearchInput({ placeholder }) {
+export default function BlogSearch({ placeholder }) {
   const [value, setValue] = useState('')
   return (
     <label className="search">
@@ -29,13 +26,7 @@ export default function SearchInput({ placeholder }) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
       />
-      <kbd>⌘K</kbd>
     </label>
   )
 }
-
-export const __layers = [describeDataLayer, describeUtils].length
-
-export const __tooling = typeof describeTooling
-
-export const __bulk = typeof describeBulkGraph
+export const __vendor = typeof describeBlogVendor
