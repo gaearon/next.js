@@ -98,7 +98,7 @@ use turbopack_core::{
     reference_type::InnerAssets,
     resolve::{FindContextFileResult, find_context_file, origin::ResolveOrigin, package_json},
     source::Source,
-    source_map::GenerateSourceMap,
+    source_map::{GenerateSourceMap, structured::StructuredSourceMap},
 };
 
 use crate::{
@@ -110,7 +110,7 @@ use crate::{
     },
     code_gen::{CodeGeneration, CodeGenerationHoistedStmt, CodeGens, ModifiableAst},
     merged_module::MergedEcmascriptModule,
-    parse::{IdentCollector, ParseResult, generate_js_source_map, parse},
+    parse::{IdentCollector, ParseResult, generate_js_structured_source_map, parse},
     path_visitor::ApplyVisitors,
     references::{
         analyze_ecmascript_module,
@@ -955,7 +955,7 @@ impl ResolveOrigin for EcmascriptModuleAsset {
 #[turbo_tasks::value(shared)]
 pub struct EcmascriptModuleContent {
     pub inner_code: Rope,
-    pub source_map: Option<Rope>,
+    pub source_map: Option<StructuredSourceMap>,
     pub is_esm: bool,
     pub strict: bool,
     pub additional_ids: SmallVec<[ModuleId; 1]>,
@@ -2173,7 +2173,7 @@ async fn emit_content(
             .map(|map| map.content())
             .collect::<Vec<_>>();
 
-        Some(generate_js_source_map(
+        Some(generate_js_structured_source_map(
             &*source_map,
             mappings,
             original_source_maps,

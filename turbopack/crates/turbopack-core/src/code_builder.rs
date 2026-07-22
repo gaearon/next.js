@@ -9,22 +9,54 @@ use anyhow::Result;
 use bincode::{Decode, Encode};
 use tracing::instrument;
 use turbo_rcstr::RcStr;
-use turbo_tasks::{ResolvedVc, Vc};
+use turbo_tasks::{NonLocalValue, ResolvedVc, Vc, trace::TraceRawVcs};
 use turbo_tasks_fs::{
     File, FileContent,
     rope::{Rope, RopeBuilder},
 };
-use turbo_tasks_hash::hash_xxh3_hash64;
+use turbo_tasks_hash::{DeterministicHash, DeterministicHasher, hash_xxh3_hash64};
 
 use crate::{
     debug_id::generate_debug_id,
     output::OutputAsset,
-    source_map::{GenerateSourceMap, SourceMap, SourceMapAsset},
+    source_map::{GenerateSourceMap, SourceMap, SourceMapAsset, structured::StructuredSourceMap},
     source_pos::SourcePos,
 };
 
+/// A per-section source map: either an opaque serialized map or a structured one whose
+/// `sourcesContent` is shared rather than copied when the section is embedded.
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, TraceRawVcs, NonLocalValue)]
+pub enum SectionMap {
+    Raw(Rope),
+    Structured(Box<StructuredSourceMap>),
+}
+
+impl DeterministicHash for SectionMap {
+    fn deterministic_hash<H: DeterministicHasher>(&self, state: &mut H) {
+        match self {
+            SectionMap::Raw(map) => {
+                state.write_u8(0);
+                map.deterministic_hash(state);
+            }
+            SectionMap::Structured(map) => {
+                state.write_u8(1);
+                map.deterministic_hash(state);
+            }
+        }
+    }
+}
+
+impl SectionMap {
+    pub fn to_rope(&self) -> Rope {
+        match self {
+            SectionMap::Raw(map) => map.clone(),
+            SectionMap::Structured(map) => map.to_rope(),
+        }
+    }
+}
+
 /// A mapping of byte-offset in the code string to an associated source map.
-pub type Mapping = (usize, Option<Rope>);
+pub type Mapping = (usize, Option<SectionMap>);
 
 /// Code stores combined output code and the source map of that output code.
 #[turbo_tasks::value(shared, serialization = "hash")]
@@ -167,7 +199,14 @@ impl CodeBuilder {
     /// available. If it's not, this is no different than pushing Synthetic
     /// code.
     pub fn push_source(&mut self, code: &Rope, map: Option<Rope>) {
-        self.push_map(map);
+        self.push_map(map.map(SectionMap::Raw));
+        self.code += code;
+    }
+
+    /// Like [`CodeBuilder::push_source`] for a structured map whose `sourcesContent` stays
+    /// shared when the resulting code's map is emitted.
+    pub fn push_structured_source(&mut self, code: &Rope, map: Option<StructuredSourceMap>) {
+        self.push_map(map.map(|map| SectionMap::Structured(Box::new(map))));
         self.code += code;
     }
 
@@ -205,7 +244,7 @@ impl CodeBuilder {
     /// original code section. By inserting an empty source map when reaching a
     /// synthetic section directly after an original section, we tell Chrome
     /// that the previous map ended at this point.
-    fn push_map(&mut self, map: Option<Rope>) {
+    fn push_map(&mut self, map: Option<SectionMap>) {
         let Some(mappings) = self.mappings.as_mut() else {
             return;
         };
@@ -339,7 +378,7 @@ impl Code {
             last_byte_pos = *byte_pos;
 
             if let Some(map) = map {
-                sections.push((pos, map.clone()))
+                sections.push((pos, map.to_rope()))
             } else {
                 // We don't need an empty source map when column is 0 or the next char is a newline.
                 if pos.column != 0

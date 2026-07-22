@@ -40,7 +40,7 @@ use turbopack_core::{
     asset::{Asset, AssetContent},
     issue::{Issue, IssueExt, IssueSeverity, IssueSource, IssueStage, StyledString},
     source::Source,
-    source_map::utils::add_default_ignore_list,
+    source_map::{structured::StructuredSourceMap, utils::add_default_ignore_list},
 };
 use turbopack_swc_utils::emitter::IssueEmitter;
 
@@ -171,17 +171,22 @@ pub enum ParseResult {
     NotFound,
 }
 
+/// Generates a [`StructuredSourceMap`] for the transformed code, whose `sourcesContent`
+/// entries are individual shared ropes instead of being embedded in the serialized JSON. This
+/// keeps later `sources` URL rewrites and map embedding from copying the source text of every
+/// module. Serialize with [`StructuredSourceMap::to_rope`] where raw bytes are needed.
+///
 /// `original_source_maps_complete` indicates whether the `original_source_maps` cover the whole
 /// map, i.e. whether every module that ended up in `mappings` had an original sourcemap.
 #[instrument(level = "info", name = "generate source map", skip_all)]
-pub fn generate_js_source_map<'a>(
+pub fn generate_js_structured_source_map<'a>(
     files_map: &impl Files,
     mappings: Vec<(BytePos, LineCol)>,
     original_source_maps: impl IntoIterator<Item = &'a Rope>,
     original_source_maps_complete: bool,
     inline_sources_content: bool,
     names: FxHashMap<BytePos, Atom>,
-) -> Result<Rope> {
+) -> Result<StructuredSourceMap> {
     let original_source_maps = original_source_maps
         .into_iter()
         .map(|map| map.to_bytes())
@@ -211,14 +216,8 @@ pub fn generate_js_source_map<'a>(
     );
 
     if original_source_maps.is_empty() {
-        // We don't convert sourcemap::SourceMap into raw_sourcemap::SourceMap because we don't
-        // need to adjust mappings
-
         add_default_ignore_list(&mut new_mappings);
-
-        let mut result = vec![];
-        new_mappings.to_writer(&mut result)?;
-        Ok(Rope::from(result))
+        StructuredSourceMap::from_swc_map(new_mappings)
     } else if fast_path_single_original_source_map {
         let mut map = original_source_maps.into_iter().next().unwrap();
         // TODO: Make this more efficient
@@ -227,16 +226,17 @@ pub fn generate_js_source_map<'a>(
         // TODO: Enable this when we have a way to handle the ignore list
         // add_default_ignore_list(&mut map);
         let map = map.into_raw_sourcemap();
-        let result = serde_json::to_vec(&map)?;
-        Ok(Rope::from(result))
+        // Splitting the fields out of the `Serialize` impl avoids materializing and re-parsing
+        // the serialized map (which embeds every source's text). The fallback keeps behavior
+        // identical if the raw map ever gains a field the structured form does not know.
+        StructuredSourceMap::from_serialize(&map)
+            .or_else(|_| StructuredSourceMap::from_json_slice(&serde_json::to_vec(&map)?))
     } else {
         let mut map = new_mappings.adjust_mappings_from_multiple(original_source_maps);
 
         add_default_ignore_list(&mut map);
 
-        let mut result = vec![];
-        map.to_writer(&mut result)?;
-        Ok(Rope::from(result))
+        StructuredSourceMap::from_swc_map(map)
     }
 }
 
