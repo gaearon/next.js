@@ -192,17 +192,29 @@ mod platform {
                 &mut info as *mut libc::rusage_info_v4 as *mut libc::rusage_info_t,
             )
         };
-        (ret == 0).then(|| info.ri_phys_footprint as usize)
+        (ret == 0).then_some(info.ri_phys_footprint as usize)
     }
 }
 
 #[cfg(windows)]
 mod platform {
-    pub fn process_footprint() -> Option<usize> {
-        None
-    }
+    use windows_sys::Win32::System::{
+        ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS},
+        SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
+        Threading::GetCurrentProcess,
+    };
 
-    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    /// Reads the process working set size (the closest Windows analog of a
+    /// physical footprint) via `GetProcessMemoryInfo`.
+    pub fn process_footprint() -> Option<usize> {
+        let mut counters: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
+        counters.cb = size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+        // Safety: `counters` is a properly sized and initialized
+        // PROCESS_MEMORY_COUNTERS; the current-process pseudo handle needs no
+        // access rights.
+        let ret = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb) };
+        (ret != 0).then_some(counters.WorkingSetSize)
+    }
 
     /// Reads `MEMORYSTATUSEX::dwMemoryLoad`, which is the approximate
     /// percentage of physical memory in use (0..=100).

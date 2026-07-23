@@ -166,6 +166,28 @@ pub enum TurboTasksBackendJob {
 }
 
 /// Why a snapshot/persist is being performed.
+/// Narrows the recency-protected window for the next pressure sweep, returning `None`
+/// when the window was already fully collapsed (nothing older than the current epoch was
+/// spared, so more sweeps cannot reclaim anything further).
+fn narrowed_pressure_window(window: u32) -> Option<u32> {
+    (window > 0).then_some(window / 4)
+}
+
+/// Pacing for the next budget-triggered cycle: back-to-back while cycles make progress,
+/// exponential backoff (bounded) when stuck so a hopeless budget cannot busy-loop.
+fn next_pressure_backoff(
+    previous: Duration,
+    progressed: bool,
+    min: Duration,
+    max: Duration,
+) -> Duration {
+    if progressed {
+        min
+    } else {
+        (previous * 2).min(max)
+    }
+}
+
 /// Cumulative count of eviction regrets: tasks whose data was re-demanded within 60s of
 /// being evicted. High regret means eviction moments are poorly chosen.
 static EVICTION_REGRETS: AtomicU64 = AtomicU64::new(0);
@@ -3141,19 +3163,20 @@ impl TurboTasksBackend {
                                             },
                                         );
                                         log_eviction_counts("pressure", &counts);
-                                        if window == 0 {
+                                        let Some(narrowed) = narrowed_pressure_window(window)
+                                        else {
                                             break;
-                                        }
+                                        };
                                         // Freed memory only leaves the footprint once the
                                         // allocator purges it back to the OS; force that and
                                         // give the accounting a moment to settle before deciding
                                         // whether the protected window must shrink.
                                         TurboMalloc::collect(true);
-                                        std::thread::sleep(Duration::from_millis(300));
+                                        tokio::time::sleep(Duration::from_millis(300)).await;
                                         if Self::budget_memory_usage() <= budget {
                                             break;
                                         }
-                                        window /= 4;
+                                        window = narrowed;
                                     }
                                     eviction_control.record_eviction();
 
@@ -3170,11 +3193,12 @@ impl TurboTasksBackend {
                                     let progressed = usage_after <= budget
                                         || new_data
                                         || usage_before.saturating_sub(usage_after) >= budget / 32;
-                                    pressure_backoff = if progressed {
-                                        PRESSURE_BACKOFF_MIN
-                                    } else {
-                                        (pressure_backoff * 2).min(PRESSURE_BACKOFF_MAX)
-                                    };
+                                    pressure_backoff = next_pressure_backoff(
+                                        pressure_backoff,
+                                        progressed,
+                                        PRESSURE_BACKOFF_MIN,
+                                        PRESSURE_BACKOFF_MAX,
+                                    );
                                     pressure_cooldown_until = Instant::now() + pressure_backoff;
                                     if evict_log_enabled() {
                                         eprintln!(
@@ -4079,4 +4103,34 @@ fn encode_task_data(
             })?;
     }
     Ok(SmallVec::from_slice(scratch_buffer))
+}
+
+#[cfg(test)]
+mod pressure_control_tests {
+    use std::time::Duration;
+
+    use super::{narrowed_pressure_window, next_pressure_backoff};
+
+    #[test]
+    fn window_narrows_to_zero_then_stops() {
+        // 60s of protection (12 five-second epochs) collapses in three passes.
+        assert_eq!(narrowed_pressure_window(12), Some(3));
+        assert_eq!(narrowed_pressure_window(3), Some(0));
+        assert_eq!(narrowed_pressure_window(0), None);
+    }
+
+    #[test]
+    fn backoff_resets_on_progress_and_doubles_bounded_when_stuck() {
+        let min = Duration::from_secs(1);
+        let max = Duration::from_secs(30);
+        assert_eq!(next_pressure_backoff(max, true, min, max), min);
+        assert_eq!(
+            next_pressure_backoff(Duration::from_secs(4), false, min, max),
+            Duration::from_secs(8)
+        );
+        assert_eq!(
+            next_pressure_backoff(Duration::from_secs(20), false, min, max),
+            max
+        );
+    }
 }
