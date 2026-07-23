@@ -15,7 +15,7 @@ use std::{
     pin::Pin,
     sync::{
         Arc, LazyLock,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     },
     time::SystemTime,
 };
@@ -202,12 +202,43 @@ fn evict_log_enabled() -> bool {
 
 /// Logs one line per eviction sweep with drop counts and regrets accumulated since the
 /// previous sweep. Only active when `TURBO_ENGINE_EVICT_LOG` is set.
-fn log_eviction_counts(trigger: &str, counts: &crate::backend::storage::EvictionCounts) {
+/// Initial protection window of pressure sweeps, in 5s epochs (60s): old data is dropped
+/// first, and the within-cycle narrowing cuts deeper only when that is not enough. The
+/// adaptive window can raise this start, never lower it.
+const PRESSURE_SWEEP_START_WINDOW_EPOCHS: u32 = 12;
+
+/// Regrets accumulated since the previous call, and the running total.
+fn take_regrets_since_last() -> (u64, u64) {
+    let total = EVICTION_REGRETS.load(Ordering::Relaxed);
+    let last = EVICTION_REGRETS_LAST.swap(total, Ordering::Relaxed);
+    (total - last, total)
+}
+
+/// Adjusts the adaptive recency window after a sweep: regrets mean recently-used data was
+/// dropped and had to come back (widen the protection), zero regrets mean eviction is not
+/// hurting (shrink toward no protection). The dead zone in between holds steady.
+fn adjusted_adaptive_window(window: u32, regrets: u64, evicted: usize) -> u32 {
+    // One regret in 256 evictions (min 64) is background noise for multi-million-entry
+    // sweeps; above that the protection window is clearly too narrow.
+    let noise_floor = 64.max(evicted as u64 / 256);
+    if regrets > noise_floor {
+        (window * 2).clamp(1, 60) // cap at 300s
+    } else if regrets == 0 {
+        window / 2
+    } else {
+        window
+    }
+}
+
+fn log_eviction_counts(
+    trigger: &str,
+    counts: &crate::backend::storage::EvictionCounts,
+    regrets_since_last: u64,
+    regrets_total: u64,
+) {
     if !evict_log_enabled() {
         return;
     }
-    let total = EVICTION_REGRETS.load(Ordering::Relaxed);
-    let last = EVICTION_REGRETS_LAST.swap(total, Ordering::Relaxed);
     eprintln!(
         "[evict:{trigger}] full={} data={} meta={} skipped_recent={} regrets_since_last={} \
          regrets_total={}",
@@ -215,8 +246,8 @@ fn log_eviction_counts(trigger: &str, counts: &crate::backend::storage::Eviction
         counts.data_and_meta + counts.data_only,
         counts.meta_only,
         counts.skipped_recently_read,
-        total - last,
-        total,
+        regrets_since_last,
+        regrets_total,
     );
 }
 
@@ -254,6 +285,11 @@ pub struct TurboTasksBackend {
     options: BackendOptions,
 
     start_time: Instant,
+    /// Recency-protection window for eviction sweeps, in 5s epochs. Self-tunes from the
+    /// regret rate when `TURBO_ENGINE_EVICT_MIN_AGE_SECS` is not set: starts at zero (stock
+    /// behavior — evict everything evictable), widened when evicted data keeps being
+    /// re-demanded, shrunk back toward zero when eviction stops regretting.
+    eviction_adaptive_window: AtomicU32,
 
     persisted_task_id_factory: IdFactoryWithReuse<TaskId>,
     transient_task_id_factory: IdFactoryWithReuse<TaskId>,
@@ -306,6 +342,7 @@ impl TurboTasksBackend {
         Self {
             options,
             start_time: Instant::now(),
+            eviction_adaptive_window: AtomicU32::new(0),
             persisted_task_id_factory: IdFactoryWithReuse::new(
                 next_task_id,
                 TaskId::try_from(TRANSIENT_TASK_BIT - 1).unwrap(),
@@ -370,19 +407,36 @@ impl TurboTasksBackend {
         (self.start_time.elapsed().as_secs() / 5) as u32
     }
 
-    /// Recency parameters for an eviction sweep. The skip gate is active only when
-    /// `TURBO_ENGINE_EVICT_MIN_AGE_SECS` is set: tasks read within that many seconds keep
-    /// their value data. Evicted-epoch stamping (for regret tracking) is always active.
-    fn eviction_recency(&self) -> crate::backend::storage::EvictionRecency {
-        static MIN_AGE_EPOCHS: LazyLock<Option<u32>> = LazyLock::new(|| {
+    /// The recency-protection window for eviction sweeps, in 5s epochs:
+    /// `TURBO_ENGINE_EVICT_MIN_AGE_SECS` when set (0 disables the gate entirely),
+    /// otherwise the self-tuning adaptive window.
+    fn eviction_window_epochs(&self) -> Option<u32> {
+        static MIN_AGE_EPOCHS: LazyLock<Option<Option<u32>>> = LazyLock::new(|| {
             std::env::var("TURBO_ENGINE_EVICT_MIN_AGE_SECS")
                 .ok()
                 .and_then(|v| v.parse::<u64>().ok())
-                .map(|secs| ((secs / 5) as u32).max(1))
+                .map(|secs| (secs > 0).then(|| ((secs / 5) as u32).max(1)))
         });
+        match *MIN_AGE_EPOCHS {
+            Some(configured) => configured,
+            None => {
+                // An adaptive window of zero disables the gate entirely (exactly stock
+                // behavior). Even a "current epoch only" floor is not free: under active
+                // compilation five seconds of freshly-read data is hundreds of megabytes.
+                let window = self.eviction_adaptive_window.load(Ordering::Relaxed);
+                (window > 0).then_some(window)
+            }
+        }
+    }
+
+    /// Recency parameters for an eviction sweep: tasks read within the protection window
+    /// keep their value data. Evicted-epoch stamping (for regret tracking) is always active.
+    fn eviction_recency(&self) -> crate::backend::storage::EvictionRecency {
         let current_epoch = self.recency_epoch();
         crate::backend::storage::EvictionRecency {
-            min_epoch: MIN_AGE_EPOCHS.map(|age| current_epoch.saturating_sub(age)),
+            min_epoch: self
+                .eviction_window_epochs()
+                .map(|age| current_epoch.saturating_sub(age)),
             current_epoch,
         }
     }
@@ -412,9 +466,15 @@ impl TurboTasksBackend {
                 return (false, EvictionCounts::default());
             }
         };
-        let counts = self
-            .storage
-            .evict_after_snapshot(None, self.eviction_recency());
+        // Tests want deterministic full eviction: bypass the recency gate (everything in a
+        // fast-running test was read moments ago) while keeping evicted-epoch stamping.
+        let counts = self.storage.evict_after_snapshot(
+            None,
+            crate::backend::storage::EvictionRecency {
+                min_epoch: None,
+                current_epoch: self.recency_epoch(),
+            },
+        );
         (had_new_data, counts)
     }
 
@@ -2960,10 +3020,18 @@ impl TurboTasksBackend {
                     /// triggered immediately instead of waiting for the periodic interval or
                     /// an idle timeout. Disabled unless the env var is set.
                     static EVICT_ABOVE_BYTES: LazyLock<Option<usize>> = LazyLock::new(|| {
-                        std::env::var("TURBO_ENGINE_EVICT_ABOVE_MB")
-                            .ok()
-                            .and_then(|v| v.parse::<usize>().ok())
-                            .map(|mb| mb * 1024 * 1024)
+                        match std::env::var("TURBO_ENGINE_EVICT_ABOVE_MB") {
+                            Ok(v) => {
+                                let mb = v.parse::<usize>().ok()?;
+                                // `0` explicitly disables the budget.
+                                (mb > 0).then_some(mb * 1024 * 1024)
+                            }
+                            // Default: half of physical RAM. A dev-server footprint beyond
+                            // that is pathological on any machine, and staying under it
+                            // costs a few percent of sweep time at most.
+                            Err(_) => turbo_tasks_malloc::TurboMalloc::total_system_memory()
+                                .map(|total| total / 2),
+                        }
                     });
 
                     let mut pressure_cooldown_until = Instant::now();
@@ -3178,10 +3246,9 @@ impl TurboTasksBackend {
                                         .expect("pressure trigger implies a budget");
                                     let current_epoch = self.recency_epoch();
                                     let mut window = self
-                                        .eviction_recency()
-                                        .min_epoch
-                                        .map(|min| current_epoch.saturating_sub(min))
-                                        .unwrap_or(12); // default protection: 60s
+                                        .eviction_window_epochs()
+                                        .unwrap_or(0)
+                                        .max(PRESSURE_SWEEP_START_WINDOW_EPOCHS);
                                     loop {
                                         let counts = self.storage.evict_after_snapshot(
                                             background_span.id(),
@@ -3192,7 +3259,14 @@ impl TurboTasksBackend {
                                                 current_epoch,
                                             },
                                         );
-                                        log_eviction_counts("pressure", &counts);
+                                        let (regrets_since, regrets_total) =
+                                            take_regrets_since_last();
+                                        log_eviction_counts(
+                                            "pressure",
+                                            &counts,
+                                            regrets_since,
+                                            regrets_total,
+                                        );
                                         let Some(narrowed) = narrowed_pressure_window(window)
                                         else {
                                             break;
@@ -3259,7 +3333,26 @@ impl TurboTasksBackend {
                                         background_span.id(),
                                         self.eviction_recency(),
                                     );
-                                    log_eviction_counts("idle/interval", &counts);
+                                    let (regrets_since, regrets_total) = take_regrets_since_last();
+                                    log_eviction_counts(
+                                        "idle/interval",
+                                        &counts,
+                                        regrets_since,
+                                        regrets_total,
+                                    );
+                                    // Regrets observed since the previous sweep tell us whether
+                                    // that sweep's protection window was too narrow (or wider
+                                    // than needed); adjust for the next one.
+                                    let window =
+                                        self.eviction_adaptive_window.load(Ordering::Relaxed);
+                                    self.eviction_adaptive_window.store(
+                                        adjusted_adaptive_window(
+                                            window,
+                                            regrets_since,
+                                            counts.data_and_meta + counts.data_only,
+                                        ),
+                                        Ordering::Relaxed,
+                                    );
                                     // Sample the post-eviction floor as the new baseline.
                                     eviction_control.record_eviction();
                                     true
@@ -4171,5 +4264,25 @@ mod pressure_control_tests {
             next_pressure_backoff(Duration::from_secs(20), false, min, max),
             max
         );
+    }
+}
+
+#[cfg(test)]
+mod adaptive_window_tests {
+    use super::adjusted_adaptive_window;
+
+    #[test]
+    fn widens_on_regret_shrinks_on_none_holds_in_dead_zone() {
+        // Heavy regret doubles the window (capped at 300s = 60 epochs).
+        assert_eq!(adjusted_adaptive_window(12, 10_000, 1_000_000), 24);
+        assert_eq!(adjusted_adaptive_window(48, 10_000, 1_000_000), 60);
+        // Zero regret halves it down to zero.
+        assert_eq!(adjusted_adaptive_window(12, 0, 1_000_000), 6);
+        assert_eq!(adjusted_adaptive_window(1, 0, 1_000_000), 0);
+        // Background noise (below max(64, evicted/256)) holds steady.
+        assert_eq!(adjusted_adaptive_window(12, 50, 1_000_000), 12);
+        assert_eq!(adjusted_adaptive_window(12, 3_000, 1_000_000), 12);
+        // A window of zero can recover once regrets appear.
+        assert_eq!(adjusted_adaptive_window(0, 10_000, 1_000_000), 1);
     }
 }

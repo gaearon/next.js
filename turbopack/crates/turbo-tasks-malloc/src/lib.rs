@@ -151,6 +151,11 @@ impl TurboMalloc {
     pub fn process_footprint() -> Option<usize> {
         memory_pressure::process_footprint()
     }
+
+    /// Total physical memory of the machine, `None` when the platform does not expose it.
+    pub fn total_system_memory() -> Option<usize> {
+        memory_pressure::total_system_memory()
+    }
 }
 
 /// Get the allocator for this platform that we should wrap with TurboMalloc.

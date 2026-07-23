@@ -15,6 +15,11 @@ pub fn process_footprint() -> Option<usize> {
     platform::process_footprint()
 }
 
+/// See [`super::TurboMalloc::total_system_memory`].
+pub fn total_system_memory() -> Option<usize> {
+    platform::total_system_memory()
+}
+
 #[allow(dead_code)]
 fn clamp_percent(value: f64) -> u8 {
     if !value.is_finite() {
@@ -50,6 +55,14 @@ mod platform {
         // Safety: sysconf(_SC_PAGESIZE) is always callable.
         let page_size = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok()?;
         Some(rss_pages * page_size)
+    }
+
+    /// Reads total physical memory from `/proc/meminfo`.
+    pub fn total_system_memory() -> Option<usize> {
+        let content = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let line = content.lines().find(|l| l.starts_with("MemTotal:"))?;
+        let kb: usize = line.split_whitespace().nth(1)?.parse().ok()?;
+        Some(kb * 1024)
     }
 
     fn parse_psi(content: &str) -> Option<u8> {
@@ -194,6 +207,25 @@ mod platform {
         };
         (ret == 0).then_some(info.ri_phys_footprint as usize)
     }
+
+    /// Reads total physical memory from the `hw.memsize` sysctl.
+    pub fn total_system_memory() -> Option<usize> {
+        let mut memsize: u64 = 0;
+        let mut size: libc::size_t = size_of::<u64>() as libc::size_t;
+        let name = c"hw.memsize";
+        // Safety: `sysctlbyname` writes up to `size` bytes into `&mut memsize`;
+        // the buffer is large enough for a `u64`.
+        let ret = unsafe {
+            libc::sysctlbyname(
+                name.as_ptr(),
+                &mut memsize as *mut u64 as *mut std::ffi::c_void,
+                &mut size,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        (ret == 0 && size == size_of::<u64>() as libc::size_t).then_some(memsize as usize)
+    }
 }
 
 #[cfg(windows)]
@@ -214,6 +246,15 @@ mod platform {
         // access rights.
         let ret = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb) };
         (ret != 0).then_some(counters.WorkingSetSize)
+    }
+
+    /// Reads total physical memory via `GlobalMemoryStatusEx`.
+    pub fn total_system_memory() -> Option<usize> {
+        let mut status: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
+        status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        // Safety: `status` is a properly sized and initialized MEMORYSTATUSEX.
+        let ret = unsafe { GlobalMemoryStatusEx(&mut status) };
+        (ret != 0).then_some(status.ullTotalPhys as usize)
     }
 
     /// Reads `MEMORYSTATUSEX::dwMemoryLoad`, which is the approximate
@@ -244,6 +285,10 @@ mod platform {
     pub fn process_footprint() -> Option<usize> {
         None
     }
+
+    pub fn total_system_memory() -> Option<usize> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -266,5 +311,30 @@ mod footprint_tests {
             all(target_os = "linux", not(target_family = "wasm"))
         )))]
         assert!(fp.is_none());
+    }
+}
+
+#[cfg(test)]
+mod system_memory_tests {
+    #[test]
+    fn total_system_memory_is_reasonable() {
+        let total = super::total_system_memory();
+        #[cfg(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", not(target_family = "wasm"))
+        ))]
+        {
+            let total = total.expect("total memory available on this platform");
+            // Between 256MB and 64TB.
+            assert!(total > 1 << 28, "total too small: {total}");
+            assert!(total < 1 << 46, "total too large: {total}");
+        }
+        #[cfg(not(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", not(target_family = "wasm"))
+        )))]
+        assert!(total.is_none());
     }
 }
