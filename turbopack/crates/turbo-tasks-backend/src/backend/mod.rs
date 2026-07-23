@@ -235,19 +235,21 @@ fn log_eviction_counts(
     counts: &crate::backend::storage::EvictionCounts,
     regrets_since_last: u64,
     regrets_total: u64,
+    window_epochs: u32,
 ) {
     if !evict_log_enabled() {
         return;
     }
     eprintln!(
         "[evict:{trigger}] full={} data={} meta={} skipped_recent={} regrets_since_last={} \
-         regrets_total={}",
+         regrets_total={} window={}s",
         counts.full,
         counts.data_and_meta + counts.data_only,
         counts.meta_only,
         counts.skipped_recently_read,
         regrets_since_last,
         regrets_total,
+        window_epochs * 5,
     );
 }
 
@@ -3279,6 +3281,7 @@ impl TurboTasksBackend {
                                             &counts,
                                             regrets_since,
                                             regrets_total,
+                                            window,
                                         );
                                         let Some(narrowed) = narrowed_pressure_window(window)
                                         else {
@@ -3352,6 +3355,7 @@ impl TurboTasksBackend {
                                         &counts,
                                         regrets_since,
                                         regrets_total,
+                                        self.eviction_window_epochs().unwrap_or(0),
                                     );
                                     // Regrets observed since the previous sweep tell us whether
                                     // that sweep's protection window was too narrow (or wider
