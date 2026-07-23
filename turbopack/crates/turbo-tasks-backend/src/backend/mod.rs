@@ -2968,6 +2968,12 @@ impl TurboTasksBackend {
 
                     let mut pressure_cooldown_until = Instant::now();
                     let mut pressure_backoff = Duration::from_secs(1);
+                    // Predictive-trigger state: fire one expected reaction time early so the
+                    // footprint peaks near the budget instead of budget + growth-during-cycle.
+                    // Both EMAs use alpha 0.3; the cycle estimate starts pessimistic.
+                    let mut pressure_rate_sample: Option<(Instant, usize)> = None;
+                    let mut growth_rate_ema: f64 = 0.0; // bytes/sec
+                    let mut cycle_secs_ema: f64 = 3.0;
                     let mut last_snapshot = self.start_time;
                     let mut idle_start_listener = self.idle_start_event.listen();
                     let mut idle_end_listener = self.idle_end_event.listen();
@@ -3050,12 +3056,35 @@ impl TurboTasksBackend {
                                     _ = tokio::time::sleep_until(pressure_check), if EVICT_ABOVE_BYTES.is_some() => {
                                         pressure_check =
                                             tokio::time::Instant::now() + PRESSURE_CHECK_INTERVAL;
-                                        if let Some(budget) = *EVICT_ABOVE_BYTES
-                                            && Instant::now() >= pressure_cooldown_until
-                                            && Self::budget_memory_usage() > budget
-                                        {
-                                            reason = SnapshotReason::MemoryPressure;
-                                            break;
+                                        if let Some(budget) = *EVICT_ABOVE_BYTES {
+                                            let now = Instant::now();
+                                            let usage = Self::budget_memory_usage();
+                                            // Footprint growth rate, sampled per tick. Negative
+                                            // growth (eviction, purge) decays the estimate toward
+                                            // zero instead of going negative.
+                                            if let Some((prev_t, prev_usage)) = pressure_rate_sample {
+                                                let dt = now.duration_since(prev_t).as_secs_f64();
+                                                if dt > 0.0 {
+                                                    let rate =
+                                                        (usage.saturating_sub(prev_usage)) as f64 / dt;
+                                                    growth_rate_ema =
+                                                        0.7 * growth_rate_ema + 0.3 * rate;
+                                                }
+                                            }
+                                            pressure_rate_sample = Some((now, usage));
+                                            // Fire when the budget would be crossed before a
+                                            // reaction (snapshot+evict cycle) can land. The lead
+                                            // is capped so a rate spike cannot trigger from far
+                                            // below the budget.
+                                            let lead = (growth_rate_ema * cycle_secs_ema)
+                                                .min(budget as f64 / 8.0)
+                                                as usize;
+                                            if now >= pressure_cooldown_until
+                                                && usage.saturating_add(lead) > budget
+                                            {
+                                                reason = SnapshotReason::MemoryPressure;
+                                                break;
+                                            }
                                         }
                                     },
                                 }
@@ -3063,6 +3092,7 @@ impl TurboTasksBackend {
                         }
                         let pressure_triggered = matches!(reason, SnapshotReason::MemoryPressure);
                         let usage_before_cycle = pressure_triggered.then(Self::budget_memory_usage);
+                        let pressure_cycle_start = pressure_triggered.then(Instant::now);
 
                         // Persistence exists to save work; accumulated compilation time is
                         // the proxy for how much work a snapshot would save. Skip periodic
@@ -3200,14 +3230,23 @@ impl TurboTasksBackend {
                                         PRESSURE_BACKOFF_MAX,
                                     );
                                     pressure_cooldown_until = Instant::now() + pressure_backoff;
+                                    // Feed the reaction-time estimate for the predictive trigger.
+                                    let cycle_secs = pressure_cycle_start
+                                        .expect("set when pressure_triggered")
+                                        .elapsed()
+                                        .as_secs_f64();
+                                    cycle_secs_ema = 0.7 * cycle_secs_ema + 0.3 * cycle_secs;
                                     if evict_log_enabled() {
                                         eprintln!(
                                             "[pressure-cycle] before={}M after={}M budget={}M \
-                                             new_data={new_data} backoff={}s",
+                                             new_data={new_data} backoff={}s cycle={:.1}s \
+                                             rate={}M/s",
                                             usage_before >> 20,
                                             usage_after >> 20,
                                             budget >> 20,
                                             pressure_backoff.as_secs(),
+                                            cycle_secs_ema,
+                                            (growth_rate_ema as usize) >> 20,
                                         );
                                     }
                                     true
