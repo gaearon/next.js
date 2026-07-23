@@ -3187,6 +3187,13 @@ impl TurboTasksBackend {
                         // grouped together in trace viewers.
                         let background_span =
                             tracing::info_span!(parent: None, "background snapshot");
+                        if evict_log_enabled() {
+                            eprintln!(
+                                "[snapshot] reason={} t={}s",
+                                reason.as_str(),
+                                self.start_time.elapsed().as_secs()
+                            );
+                        }
                         match self.snapshot_and_persist(background_span.id(), reason, turbo_tasks) {
                             Err(err) => {
                                 // save_snapshot consumed persisted_task_cache_log entries;
@@ -3196,6 +3203,12 @@ impl TurboTasksBackend {
                                 return;
                             }
                             Ok((snapshot_start, new_data)) => {
+                                if evict_log_enabled() {
+                                    eprintln!(
+                                        "[snapshot-done] new_data={new_data} t={}s",
+                                        self.start_time.elapsed().as_secs()
+                                    );
+                                }
                                 // if we see 'new_data' then the next idle transition is 'fresh'
                                 fresh_idle = new_data;
                                 is_first = false;
